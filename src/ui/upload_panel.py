@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 import streamlit as st
 
+_XLSX_TYPES = ["xlsx", "xls"]
+
 
 @dataclass
 class UploadedFiles:
@@ -13,56 +15,80 @@ class UploadedFiles:
     run_analysis: bool = False
 
 
+def _render_section_header(title: str, tooltip: str) -> None:
+    """Заголовок секции с иконкой подсказки, как на макете."""
+    header_col, info_col = st.columns([0.92, 0.08])
+    with header_col:
+        st.markdown(
+            f"<div class='upload-section-title'>{title}</div>",
+            unsafe_allow_html=True,
+        )
+    with info_col:
+        st.markdown(
+            f"""
+            <div class="upload-info-wrap">
+              <span class="upload-info-icon" title="{tooltip}">i</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def render_upload_panel() -> UploadedFiles:
     """Панель загрузки данных."""
     container = st.container()
     with container:
+        _inject_upload_styles()
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.markdown(
-                "<div style='font-size:16px; font-weight:bold; margin-bottom:8px;'>📊 Продажи</div>",
-                unsafe_allow_html=True,
+            _render_section_header(
+                "Продажи",
+                "Файл продаж в формате XLSX или XLS",
             )
             data_file = st.file_uploader(
                 "Продажи",
-                type="xlsx",
+                type=_XLSX_TYPES,
                 key="data",
+                help="Лимит 200 МБ на файл • XLSX, XLS",
             )
 
         with col2:
-            st.markdown(
-                "<div style='font-size:16px; font-weight:bold; margin-bottom:8px;'>🔄 Оборачиваемость</div>",
-                unsafe_allow_html=True,
+            _render_section_header(
+                "Оборачиваемость",
+                "Файлы оборачиваемости за 7 и 90 дней в формате XLSX или XLS",
             )
             turnover_week_file = st.file_uploader(
                 "7 дней",
-                type="xlsx",
+                type=_XLSX_TYPES,
                 key="turnover_week",
+                help="Лимит 200 МБ на файл • XLSX, XLS",
             )
             turnover_90_file = st.file_uploader(
                 "90 дней",
-                type="xlsx",
+                type=_XLSX_TYPES,
                 key="turnover_90",
+                help="Лимит 200 МБ на файл • XLSX, XLS",
             )
 
         with col3:
-            st.markdown(
-                "<div style='font-size:16px; font-weight:bold; margin-bottom:8px;'>💳 Чеки и клиенты</div>",
-                unsafe_allow_html=True,
+            _render_section_header(
+                "Чеки и клиенты",
+                "Файлы чеков, клиентов и сегментов покупателей в формате XLSX или XLS",
             )
             checks_clients_file = st.file_uploader(
                 "Чеки и клиенты",
-                type="xlsx",
+                type=_XLSX_TYPES,
                 key="checks_clients",
+                help="Лимит 200 МБ на файл • XLSX, XLS",
             )
             client_segments_file = st.file_uploader(
                 "Сегменты покупателей",
-                type="xlsx",
+                type=_XLSX_TYPES,
                 key="client_segments",
+                help="Лимит 200 МБ на файл • XLSX, XLS",
             )
 
-        _inject_upload_button_style()
         run_analysis = st.button(
             "Загрузить данные",
             type="primary",
@@ -103,10 +129,79 @@ def render_upload_panel() -> UploadedFiles:
     return UploadedFiles()
 
 
-def _inject_upload_button_style() -> None:
+def _inject_upload_styles() -> None:
     st.markdown(
         """
         <style>
+        .upload-section-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #FAFAFA;
+            margin-bottom: 4px;
+            line-height: 1.2;
+        }
+        .upload-info-wrap {
+            display: flex;
+            justify-content: flex-end;
+            padding-top: 2px;
+        }
+        .upload-info-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            border: 1px solid #3a3d46;
+            background: #1a1c24;
+            color: #4A90E2;
+            font-weight: 700;
+            font-size: 0.85rem;
+            font-style: italic;
+            cursor: help;
+        }
+        div[data-testid="stFileUploader"] {
+            margin-bottom: 0.75rem;
+        }
+        div[data-testid="stFileUploader"] label p {
+            color: #A3A8B4 !important;
+            font-size: 0.9rem !important;
+            font-weight: 500 !important;
+            margin-bottom: 6px !important;
+        }
+        section[data-testid="stFileUploaderDropzone"] {
+            background-color: #262730 !important;
+            border: 1px solid #3a3d46 !important;
+            border-radius: 10px !important;
+            min-height: 72px !important;
+            padding: 12px 16px !important;
+        }
+        section[data-testid="stFileUploaderDropzone"]:hover {
+            border-color: #4A90E2 !important;
+        }
+        section[data-testid="stFileUploaderDropzone"] span,
+        section[data-testid="stFileUploaderDropzone"] p {
+            color: #FAFAFA !important;
+        }
+        section[data-testid="stFileUploaderDropzone"] small {
+            color: #A3A8B4 !important;
+        }
+        section[data-testid="stFileUploaderDropzone"] button {
+            background: transparent !important;
+            border: 1px solid #3a3d46 !important;
+            color: #FAFAFA !important;
+            border-radius: 8px !important;
+            font-weight: 500 !important;
+        }
+        section[data-testid="stFileUploaderDropzone"] button:hover,
+        section[data-testid="stFileUploaderDropzone"] button:active,
+        section[data-testid="stFileUploaderDropzone"] button:focus,
+        section[data-testid="stFileUploaderDropzone"] button:focus-visible {
+            border-color: #4A90E2 !important;
+            background: rgba(74, 144, 226, 0.08) !important;
+            box-shadow: none !important;
+            color: #FAFAFA !important;
+        }
         .st-key-upload_data_btn button[kind="primary"] {
             background-color: #e84545 !important;
             border-color: #e84545 !important;
