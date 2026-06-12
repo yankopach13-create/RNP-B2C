@@ -20,6 +20,15 @@ def _resolve_instruction_image_path(image_name: str) -> Path:
         if candidate.exists():
             return candidate
 
+    if INSTRUCTIONS_DIR.is_dir():
+        stem_lower = stem.casefold()
+        for path in INSTRUCTIONS_DIR.iterdir():
+            if not path.is_file():
+                continue
+            if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                if path.stem.casefold() == stem_lower:
+                    return path
+
     return image_path
 
 
@@ -59,12 +68,29 @@ def _split_caption_paragraphs(caption: str) -> list[str]:
     return [part.strip() for part in caption.split("<br><br>") if part.strip()]
 
 
+def _build_column_instruction_html(
+    title: str,
+    caption: str,
+    image_name: str | None,
+) -> str:
+    blocks: list[str] = []
+    if title:
+        blocks.append(f"<div class='help-popover__col-title'>{title}</div>")
+    for paragraph in _split_caption_paragraphs(caption):
+        blocks.append(f"<div class='help-popover__paragraph'>{paragraph}</div>")
+    if image_name:
+        blocks.append(_build_instruction_image_html(image_name))
+    return f"<div class='help-popover__split-col'>{''.join(blocks)}</div>"
+
+
 def _build_help_popover_html(
     popover_key: str,
     caption: str,
     image_name: str | None = None,
     second_image_name: str | None = None,
     second_caption: str = "",
+    caption_title: str = "",
+    second_caption_title: str = "",
     trigger_label: str = "ℹ️",
     align: str = "right",
     two_column_layout: bool = False,
@@ -73,30 +99,11 @@ def _build_help_popover_html(
 ) -> str:
     parts: list[str] = []
     if two_column_layout and second_image_name and image_name:
-        left_paragraphs = _split_caption_paragraphs(caption)
-        right_paragraphs = _split_caption_paragraphs(second_caption)
-        rows_count = max(len(left_paragraphs), len(right_paragraphs))
-        text_rows: list[str] = []
-        for idx in range(rows_count):
-            left_part = left_paragraphs[idx] if idx < len(left_paragraphs) else ""
-            right_part = right_paragraphs[idx] if idx < len(right_paragraphs) else ""
-            text_rows.append(
-                (
-                    "<div class='help-popover__row'>"
-                    f"<div class='help-popover__paragraph'>{left_part}</div>"
-                    f"<div class='help-popover__paragraph'>{right_part}</div>"
-                    "</div>"
-                )
-            )
-
         parts.append(
             (
-                "<div class='help-popover__split help-popover__split-text'>"
-                f"{''.join(text_rows)}"
-                "</div>"
-                "<div class='help-popover__split help-popover__split-images'>"
-                f"<div class='help-popover__split-col'>{_build_instruction_image_html(image_name)}</div>"
-                f"<div class='help-popover__split-col'>{_build_instruction_image_html(second_image_name)}</div>"
+                "<div class='help-popover__split help-popover__split-columns'>"
+                f"{_build_column_instruction_html(caption_title, caption, image_name)}"
+                f"{_build_column_instruction_html(second_caption_title, second_caption, second_image_name)}"
                 "</div>"
             )
         )
@@ -131,6 +138,8 @@ def render_custom_help_popover(
     image_name: str | None = None,
     second_image_name: str | None = None,
     second_caption: str = "",
+    caption_title: str = "",
+    second_caption_title: str = "",
     trigger_label: str = "ℹ️",
     align: str = "right",
     two_column_layout: bool = False,
@@ -143,6 +152,8 @@ def render_custom_help_popover(
             image_name=image_name,
             second_image_name=second_image_name,
             second_caption=second_caption,
+            caption_title=caption_title,
+            second_caption_title=second_caption_title,
             trigger_label=trigger_label,
             align=align,
             two_column_layout=two_column_layout,
@@ -158,6 +169,8 @@ def render_section_header_with_help(
     caption: str,
     second_image_name: str | None = None,
     second_caption: str = "",
+    caption_title: str = "",
+    second_caption_title: str = "",
     align: str = "right",
     two_column_layout: bool = False,
     compact_images: bool = False,
@@ -173,6 +186,8 @@ def render_section_header_with_help(
             image_name=image_name,
             second_image_name=second_image_name,
             second_caption=second_caption,
+            caption_title=caption_title,
+            second_caption_title=second_caption_title,
             align=align,
             two_column_layout=two_column_layout,
             compact_images=compact_images,

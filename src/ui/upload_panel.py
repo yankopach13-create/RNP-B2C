@@ -26,9 +26,13 @@ def render_upload_panel() -> UploadedFiles:
         with col_sales:
             render_section_header_with_help(
                 title="Продажи",
-                image_name="sales.png",
+                image_name="Sales.png",
                 caption=(
-                    "Скачайте отчёт по продажам B2C в формате XLSX или XLS.<br><br>"
+                    "Зайдите к Qlik под профилем User2.<br>"
+                    'В анализе продаж перейдите в закладку '
+                    '"АВТОМАТИЗАЦИЯ РНП B2C (ПРОДАЖИ И ЛФЛ)".<br><br>'
+                    "Отберите необходимую неделю и скачайте отчёт без форматирования "
+                    "(не нажимайте галочку при скачивании).<br><br>"
                     'Вставьте скачанный документ в контейнер «Продажи».'
                 ),
                 align="left",
@@ -42,9 +46,12 @@ def render_upload_panel() -> UploadedFiles:
         with col_turnover:
             render_section_header_with_help(
                 title="Оборачиваемость",
-                image_name="turnover.png",
+                image_name="Turnover.png",
                 caption=(
-                    "Скачайте отчёты по оборачиваемости за 7 и 90 дней в формате XLSX или XLS.<br><br>"
+                    "Зайдите к Qlik под профилем User2.<br>"
+                    'В анализе запасов перейдите в закладку '
+                    '"АВТОМАТИЗАЦИЯ РНП B2С ( Оборачиваемость 7/90)".<br><br>'
+                    "Отберите необходимые периоды для расчёта оборачиваемости и скачайте отчёты.<br><br>"
                     'Вставьте скачанные документы в контейнеры «Оборачиваемость (90 дней)» '
                     'и «Оборачиваемость (7 дней)».'
                 ),
@@ -64,14 +71,24 @@ def render_upload_panel() -> UploadedFiles:
         with col_clients:
             render_section_header_with_help(
                 title="Чеки и клиенты",
-                image_name="checks_clients.png",
+                image_name="Clients.png",
+                caption_title="Чеки и клиенты",
                 caption=(
-                    "Скачайте отчёт по чекам и клиентам в формате XLSX или XLS.<br><br>"
+                    "Зайдите к Qlik под профилем User2.<br>"
+                    'В анализе чеков перейдите в закладку '
+                    '"АВТОМАТИЗАЦИЯ РНП B2С ( Чеки и клиенты)".<br><br>'
+                    "В фильтрах отберите недели актуального цикла и скачайте отчёт "
+                    "без форматирования (не нажимайте галочку при скачивании).<br><br>"
                     'Вставьте скачанный документ в контейнер «Чеки и клиенты».'
                 ),
-                second_image_name="client_segments.png",
+                second_image_name="Segments.png",
+                second_caption_title="Сегменты покупателей",
                 second_caption=(
-                    "Скачайте отчёт по сегментам покупателей в формате XLSX или XLS.<br><br>"
+                    "Зайдите к Qlik под профилем User2.<br>"
+                    'В анализе чеков перейдите в закладку '
+                    '"АВТОМАТИЗАЦИЯ РНП B2С ( Сегменты)".<br><br>'
+                    "В фильтрах отберите недели актуального цикла и скачайте отчёт "
+                    "без форматирования (не нажимайте галочку при скачивании).<br><br>"
                     'Вставьте скачанный документ в контейнер «Сегменты покупателей».'
                 ),
                 align="right",
@@ -222,6 +239,21 @@ def _inject_upload_page_styles() -> None:
             font-size: 0.95rem;
             color: rgba(250, 250, 250, 0.86);
             margin-bottom: 0.75rem;
+        }
+        .help-popover__col-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: rgba(250, 250, 250, 0.95);
+            margin-bottom: 0.65rem;
+        }
+        .help-popover__split-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.3rem;
+            margin-bottom: 0.25rem;
+        }
+        .help-popover__split-columns .help-popover__paragraph {
+            margin-bottom: 0.65rem;
         }
         .help-popover__image-wrapper {
             margin-bottom: 1rem;
