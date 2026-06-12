@@ -7,6 +7,33 @@ import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INSTRUCTIONS_DIR = PROJECT_ROOT / "assets" / "instructions"
+_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+# Старые имена в коде → фактические файлы в assets/instructions
+_IMAGE_STEM_ALIASES: dict[str, str] = {
+    "checks_clients": "clients",
+    "client_segments": "segments",
+    "sales": "sales",
+    "turnover": "turnover",
+}
+
+
+def _normalize_image_stem(stem: str) -> str:
+    return _IMAGE_STEM_ALIASES.get(stem.casefold(), stem)
+
+
+def _find_image_by_stem(stem: str) -> Path | None:
+    stem = _normalize_image_stem(stem)
+    stem_key = stem.casefold()
+    if not INSTRUCTIONS_DIR.is_dir():
+        return None
+    for path in INSTRUCTIONS_DIR.iterdir():
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in _IMAGE_EXTENSIONS:
+            continue
+        if path.stem.casefold() == stem_key:
+            return path
+    return None
 
 
 def _resolve_instruction_image_path(image_name: str) -> Path:
@@ -14,20 +41,15 @@ def _resolve_instruction_image_path(image_name: str) -> Path:
     if image_path.exists():
         return image_path
 
-    stem = Path(image_name).stem
-    for suffix in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+    stem = _normalize_image_stem(Path(image_name).stem)
+    for suffix in _IMAGE_EXTENSIONS:
         candidate = INSTRUCTIONS_DIR / f"{stem}{suffix}"
         if candidate.exists():
             return candidate
 
-    if INSTRUCTIONS_DIR.is_dir():
-        stem_lower = stem.casefold()
-        for path in INSTRUCTIONS_DIR.iterdir():
-            if not path.is_file():
-                continue
-            if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
-                if path.stem.casefold() == stem_lower:
-                    return path
+    found = _find_image_by_stem(stem)
+    if found is not None:
+        return found
 
     return image_path
 

@@ -26,12 +26,12 @@ def render_upload_panel() -> UploadedFiles:
         with col_sales:
             render_section_header_with_help(
                 title="Продажи",
-                image_name="Sales.png",
+                image_name="sales.png",
                 caption=(
                     "Зайдите к Qlik под профилем User2.<br>"
                     'В анализе продаж перейдите в закладку '
                     '"АВТОМАТИЗАЦИЯ РНП B2C (ПРОДАЖИ И ЛФЛ)".<br><br>'
-                    "Отберите необходимую неделю и скачайте отчёт без форматирования "
+                    "Отберите актуальную и LFL недели и скачайте отчёт без форматирования "
                     "(не нажимайте галочку при скачивании).<br><br>"
                     'Вставьте скачанный документ в контейнер «Продажи».'
                 ),
@@ -46,14 +46,14 @@ def render_upload_panel() -> UploadedFiles:
         with col_turnover:
             render_section_header_with_help(
                 title="Оборачиваемость",
-                image_name="Turnover.png",
+                image_name="turnover.png",
                 caption=(
                     "Зайдите к Qlik под профилем User2.<br>"
                     'В анализе запасов перейдите в закладку '
                     '"АВТОМАТИЗАЦИЯ РНП B2С ( Оборачиваемость 7/90)".<br><br>'
                     "Отберите необходимые периоды для расчёта оборачиваемости и скачайте отчёты.<br><br>"
-                    'Вставьте скачанные документы в контейнеры «Оборачиваемость (90 дней)» '
-                    'и «Оборачиваемость (7 дней)».'
+                    'Вставьте скачанные документы в контейнеры «Оборачиваемость 90 дней» '
+                    'и «Оборачиваемость 7 дней».'
                 ),
                 align="center",
             )
@@ -71,7 +71,7 @@ def render_upload_panel() -> UploadedFiles:
         with col_clients:
             render_section_header_with_help(
                 title="Чеки и клиенты",
-                image_name="Clients.png",
+                image_name="clients.png",
                 caption_title="Чеки и клиенты",
                 caption=(
                     "Зайдите к Qlik под профилем User2.<br>"
@@ -81,15 +81,15 @@ def render_upload_panel() -> UploadedFiles:
                     "без форматирования (не нажимайте галочку при скачивании).<br><br>"
                     'Вставьте скачанный документ в контейнер «Чеки и клиенты».'
                 ),
-                second_image_name="Segments.png",
-                second_caption_title="Сегменты покупателей",
+                second_image_name="segments.png",
+                second_caption_title="Чеки и клиенты",
                 second_caption=(
                     "Зайдите к Qlik под профилем User2.<br>"
                     'В анализе чеков перейдите в закладку '
                     '"АВТОМАТИЗАЦИЯ РНП B2С ( Сегменты)".<br><br>'
                     "В фильтрах отберите недели актуального цикла и скачайте отчёт "
                     "без форматирования (не нажимайте галочку при скачивании).<br><br>"
-                    'Вставьте скачанный документ в контейнер «Сегменты покупателей».'
+                    'Вставьте скачанный документ в контейнер «Чеки и клиенты».'
                 ),
                 align="right",
                 two_column_layout=True,
