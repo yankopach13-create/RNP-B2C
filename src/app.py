@@ -31,7 +31,7 @@ from ui.data_session import (
 from ui.reference_quick_add import render_quick_reference_update
 from ui.upload_panel import UploadedFiles, render_upload_panel
 
-st.set_page_config(page_title="B2C РНП", layout="wide")
+st.set_page_config(page_title="B2C РНП", page_icon="🛒", layout="wide")
 
 
 def main():
