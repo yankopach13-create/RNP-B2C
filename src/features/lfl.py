@@ -44,7 +44,7 @@ def render_lfl_block(
         elif categories_df is None:
             st.warning(
                 "Для факторного анализа требуется справочник категорий "
-                "в data/reference/categories.xlsx."
+                "(лист categories в Google Sheets или categories.xlsx)."
             )
         else:
             st.info("Нет данных для факторного анализа.")

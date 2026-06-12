@@ -36,6 +36,11 @@ st.set_page_config(page_title="B2C РНП", layout="wide")
 
 def main():
     st.title("B2C")
+    st.markdown(
+        '<a href="https://docs.google.com/spreadsheets/d/14ecZy9BRnYiHOjASyPmcBttuUjtv6rY-a4cazeBhldM/edit?hl=ru&gid=1406589453#gid=1406589453" '
+        'target="_blank" rel="noopener noreferrer">База данных</a>',
+        unsafe_allow_html=True,
+    )
 
     files: UploadedFiles = render_upload_panel()
     if not files.run_analysis:

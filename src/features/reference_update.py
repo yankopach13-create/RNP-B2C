@@ -1,4 +1,4 @@
-"""Запись правок в локальные Excel-справочники (без Streamlit)."""
+"""Запись правок в справочники (Google Sheets или локальные xlsx)."""
 
 from __future__ import annotations
 
@@ -12,17 +12,29 @@ from config.constants import (
     GROUPS_ORDER_COLUMN_CANDIDATES,
     GROUPS_ORDER_COLUMN_SHOPS,
     GROUPS_ORDER_COLUMN_SHOPS_CANDIDATES,
-    REFERENCE_CATEGORIES_FILENAME,
-    REFERENCE_CATEGORY_ORDER_FILENAMES,
-    REFERENCE_DIR,
     SHOP_GROUP_COLUMN_GENERAL,
 )
-from data.loaders import (
-    get_category_order_reference_path,
-    get_groups_order_reference_path,
-    get_groups_reference_path,
+from data.references import (
+    REF_CATEGORIES,
+    REF_CATEGORY_ORDER,
+    REF_GROUPS_ORDER,
+    REF_SHOP_GROUPS,
+    get_reference_label,
+    load_reference,
+    reference_exists,
+    save_reference,
 )
 from features.categories import format_category_pair, parse_category_pair
+
+
+def _load_or_empty(key: str, default_columns: list[str]) -> pd.DataFrame | None:
+    if not reference_exists(key):
+        return None
+    df = load_reference(key)
+    df.columns = df.columns.str.strip()
+    if df.empty and not list(df.columns):
+        return pd.DataFrame(columns=default_columns)
+    return df
 
 
 def add_shop_to_reference(
@@ -31,7 +43,7 @@ def add_shop_to_reference(
     group_general: str | None = None,
 ) -> tuple[bool, str]:
     """
-    Добавляет или обновляет магазин в файле групп.
+    Добавляет или обновляет магазин в справочнике групп.
     Если group_general is None — колонка «Группа Общий РНП:» не меняется (только «Группа»).
     Если передана строка (в т.ч. пустая) — записывается и общий РНП.
     """
@@ -41,13 +53,14 @@ def add_shop_to_reference(
     group_general_val = str(group_general or "").strip() if touch_general else ""
     if not shop_name or not group_name:
         return False, "Укажите магазин и группу РНП."
-    path = get_groups_reference_path()
-    if path is None:
-        return False, "Не найден файл shop_groups.xlsx или groups.xlsx в data/reference."
-    df = pd.read_excel(path)
-    df.columns = df.columns.str.strip()
+
+    default_cols = ["Магазин", "Группа", SHOP_GROUP_COLUMN_GENERAL]
+    df = _load_or_empty(REF_SHOP_GROUPS, default_cols)
+    if df is None:
+        return False, f"Не найден справочник магазинов ({get_reference_label(REF_SHOP_GROUPS)})."
+
     if "Магазин" not in df.columns or "Группа" not in df.columns:
-        return False, "В файле групп должны быть столбцы «Магазин» и «Группа»."
+        return False, "В справочнике групп должны быть столбцы «Магазин» и «Группа»."
     if SHOP_GROUP_COLUMN_GENERAL not in df.columns:
         df[SHOP_GROUP_COLUMN_GENERAL] = ""
     key = shop_name.lower()
@@ -64,7 +77,7 @@ def add_shop_to_reference(
             if c not in row:
                 row[c] = ""
         df = pd.concat([df, pd.DataFrame([{c: row.get(c, "") for c in df.columns}])], ignore_index=True)
-    df.to_excel(path, index=False)
+    save_reference(REF_SHOP_GROUPS, df)
     if is_new_shop:
         append_shop_to_groups_order(shop_name)
     return True, "Справочник магазинов обновлён."
@@ -85,18 +98,17 @@ def _resolve_groups_order_column_for_file(order_df: pd.DataFrame) -> str | None:
 
 
 def append_shop_to_groups_order(shop_name: str) -> tuple[bool, str]:
-    """Добавляет магазин в конец столбца «Порядок магазинов» в groups_order.xlsx."""
+    """Добавляет магазин в конец столбца «Порядок магазинов»."""
     shop_name = str(shop_name).strip()
     if not shop_name:
         return False, "Пустое название магазина."
-    path = get_groups_order_reference_path()
-    if path is None:
-        return False, "Не найден файл groups_order.xlsx в data/reference."
-    key = shop_name.lower()
-    if path.is_file():
-        df = pd.read_excel(path)
+
+    default_cols = list(GROUPS_ORDER_COLUMN_CANDIDATES) + [GROUPS_ORDER_COLUMN_SHOPS]
+    if reference_exists(REF_GROUPS_ORDER):
+        df = load_reference(REF_GROUPS_ORDER)
     else:
-        df = pd.DataFrame(columns=list(GROUPS_ORDER_COLUMN_CANDIDATES) + [GROUPS_ORDER_COLUMN_SHOPS])
+        df = pd.DataFrame(columns=default_cols)
+
     df.columns = df.columns.str.strip()
     shops_col = _resolve_shops_order_column(df)
     if shops_col is None:
@@ -106,6 +118,7 @@ def append_shop_to_groups_order(shop_name: str) -> tuple[bool, str]:
     if groups_col is None and GROUPS_ORDER_COLUMN_CANDIDATES:
         df[GROUPS_ORDER_COLUMN_CANDIDATES[0]] = ""
         groups_col = GROUPS_ORDER_COLUMN_CANDIDATES[0]
+    key = shop_name.lower()
     existing = {
         str(v).strip().lower()
         for v in df[shops_col].dropna()
@@ -116,7 +129,7 @@ def append_shop_to_groups_order(shop_name: str) -> tuple[bool, str]:
     row: dict = {c: "" for c in df.columns}
     row[shops_col] = shop_name
     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    df.to_excel(path, index=False)
+    save_reference(REF_GROUPS_ORDER, df)
     return True, "Магазин добавлен в конец списка «Порядок магазинов»."
 
 
@@ -218,7 +231,7 @@ def insert_categories_to_order(
     general_after: str | None = None,
 ) -> tuple[bool, str]:
     """
-    Добавляет новые имена в category_order.xlsx в выбранную позицию
+    Добавляет новые имена в category_order в выбранную позицию
     (столбцы «РНП» и «Общий РНП» независимы).
     rnp_after / general_after: None — в конец, __START__ — в начало, иначе — после категории.
     """
@@ -227,11 +240,8 @@ def insert_categories_to_order(
     if not rnp and not general:
         return False, "Пустые названия категорий."
 
-    path = get_category_order_reference_path()
-    if path is None:
-        path = REFERENCE_DIR / REFERENCE_CATEGORY_ORDER_FILENAMES[0]
-    if path.is_file():
-        df = pd.read_excel(path)
+    if reference_exists(REF_CATEGORY_ORDER):
+        df = load_reference(REF_CATEGORY_ORDER)
     else:
         df = pd.DataFrame(
             columns=[CATEGORY_ORDER_COLUMN_RNP, CATEGORY_ORDER_COLUMN_GENERAL]
@@ -261,8 +271,7 @@ def insert_categories_to_order(
         return True, "Категории уже есть в порядке отчёта."
 
     df = _order_lists_to_dataframe(rnp_list, gen_list, list(df.columns), rnp_col, gen_col)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_excel(path, index=False)
+    save_reference(REF_CATEGORY_ORDER, df)
     return True, "Добавлено в category_order: " + ", ".join(added)
 
 
@@ -291,7 +300,7 @@ def add_product_to_reference(
     slice1: str = "",
     slice2: str = "",
 ) -> tuple[bool, str]:
-    """Добавляет строку в categories.xlsx (категория — «РНП/Общий РНП»), если тройки ещё нет."""
+    """Добавляет строку в categories (категория — «РНП/Общий РНП»), если тройки ещё нет."""
     ur2, ur3, ur4 = str(ur2).strip(), str(ur3).strip(), str(ur4).strip()
     rnp, general = parse_category_pair(category_pair)
     if not ur2 or not ur3:
@@ -299,10 +308,11 @@ def add_product_to_reference(
     if not rnp:
         return False, "Укажите категорию (формат: РНП/Общий РНП)."
     stored = format_category_pair(rnp, general)
-    path = REFERENCE_DIR / REFERENCE_CATEGORIES_FILENAME
-    if not path.is_file():
-        return False, f"Не найден файл {path.name}."
-    df = pd.read_excel(path)
+
+    if not reference_exists(REF_CATEGORIES):
+        return False, f"Не найден справочник категорий ({get_reference_label(REF_CATEGORIES)})."
+
+    df = load_reference(REF_CATEGORIES)
     df.columns = df.columns.str.strip()
     for col in (CATEGORY_COLUMN_RNP, "Товар ур.2", "Товар ур.3"):
         if col not in df.columns:
@@ -340,5 +350,5 @@ def add_product_to_reference(
             row[c] = ""
     new_row = pd.DataFrame([{c: row.get(c, "") for c in df.columns}])
     df = pd.concat([df, new_row], ignore_index=True)
-    df.to_excel(path, index=False)
+    save_reference(REF_CATEGORIES, df)
     return True, "Справочник категорий обновлён."

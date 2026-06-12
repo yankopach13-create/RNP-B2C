@@ -1,7 +1,8 @@
 import re
 import pandas as pd
 import streamlit as st
-from config.constants import GROUP_ORDER, REFERENCE_DIR, REFERENCE_FOCUS_FILENAME
+from config.constants import GROUP_ORDER
+from data.references import REF_FOCUS, get_reference_label
 
 EXCLUDED_GROUPS = {"Интернет-магазин"}
 
@@ -17,8 +18,7 @@ def render_focus_block(
     if display_df is None:
         if focus_df is None:
             st.info(
-                f"Справочник фокусных позиций не найден: "
-                f"`{REFERENCE_DIR / REFERENCE_FOCUS_FILENAME}`."
+                f"Справочник фокусных позиций не найден ({get_reference_label(REF_FOCUS)})."
             )
         else:
             st.info("Нет данных для отображения фокусных позиций.")

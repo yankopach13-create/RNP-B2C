@@ -1,4 +1,4 @@
-"""Форма быстрого добавления магазинов и товаров в локальные справочники."""
+"""Форма быстрого добавления магазинов и товаров в справочники (Sheets / xlsx)."""
 
 from __future__ import annotations
 
@@ -373,7 +373,7 @@ def render_quick_reference_update(
             if n_dup:
                 messages.append(
                     f"«{u2} \\ {u3}»: {n_dup} поз. уже есть в справочнике — при необходимости "
-                    "обновите файл и снова нажмите «Загрузить данные»."
+                    "обновите справочник и снова нажмите «Загрузить данные»."
                 )
 
     for m in messages:
@@ -385,4 +385,5 @@ def render_quick_reference_update(
             st.info(m)
 
     if ok_any:
+        st.session_state["data_reload_requested"] = True
         st.rerun()

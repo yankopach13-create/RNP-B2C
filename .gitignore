@@ -1,0 +1,8 @@
+service-account.json
+.streamlit/secrets.toml
+src/data/reference/*.xlsx
+src/data/reference/*.xls
+__pycache__/
+*.pyc
+.venv/
+venv/

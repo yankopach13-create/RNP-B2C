@@ -619,7 +619,7 @@ def render_category_sales_table(
     if not ordered:
         st.warning(
             "Справочник порядка категорий пуст. Добавьте строки в столбец «РНП» "
-            "в data/reference/category_order.xlsx."
+            "в лист category_order (Google Sheets) или category_order.xlsx."
         )
         return
 

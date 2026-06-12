@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -9,13 +8,16 @@ from config.constants import (
     CATEGORY_ORDER_COLUMN_RNP,
     GROUPS_ORDER_COLUMN_CANDIDATES,
     GROUPS_ORDER_COLUMN_SHOPS_CANDIDATES,
-    REFERENCE_CATEGORIES_FILENAME,
-    REFERENCE_CATEGORY_ORDER_FILENAMES,
-    REFERENCE_DIR,
-    REFERENCE_FOCUS_FILENAME,
-    REFERENCE_GROUPS_FILENAMES,
-    REFERENCE_GROUPS_ORDER_FILENAMES,
     REQUIRED_CATEGORY_COLS,
+)
+from data.references import (
+    REF_CATEGORIES,
+    REF_CATEGORY_ORDER,
+    REF_FOCUS,
+    REF_GROUPS_ORDER,
+    REF_SHOP_GROUPS,
+    get_reference_label,
+    load_reference,
 )
 
 @dataclass
@@ -38,27 +40,11 @@ def _read_excel(file, **kwargs) -> pd.DataFrame:
     return pd.read_excel(file, **kwargs)
 
 
-def _groups_reference_path() -> Optional[Path]:
-    for name in REFERENCE_GROUPS_FILENAMES:
-        path = REFERENCE_DIR / name
-        if path.is_file():
-            return path
-    return None
-
-
-def get_groups_reference_path() -> Optional[Path]:
-    """Публичный путь к файлу групп магазинов (для записи справочника)."""
-    return _groups_reference_path()
-
-
-def get_groups_order_reference_path() -> Optional[Path]:
-    """Путь к groups_order.xlsx (порядок групп и магазинов)."""
-    return _reference_path(REFERENCE_GROUPS_ORDER_FILENAMES)
-
-
-def get_category_order_reference_path() -> Optional[Path]:
-    """Путь к category_order.xlsx (порядок категорий РНП и Общего РНП)."""
-    return _reference_path(REFERENCE_CATEGORY_ORDER_FILENAMES)
+def _safe_load_reference(key: str) -> Optional[pd.DataFrame]:
+    try:
+        return load_reference(key)
+    except FileNotFoundError:
+        return None
 
 
 def _coerce_numeric_columns(df: pd.DataFrame, columns: list[str]) -> None:
@@ -80,31 +66,20 @@ def _coerce_numeric_columns(df: pd.DataFrame, columns: list[str]) -> None:
 
 
 def _load_categories_reference() -> Optional[pd.DataFrame]:
-    path = REFERENCE_DIR / REFERENCE_CATEGORIES_FILENAME
-    if not path.is_file():
+    categories_df = _safe_load_reference(REF_CATEGORIES)
+    if categories_df is None:
         return None
-    categories_df = _read_excel(path)
+    categories_df.columns = categories_df.columns.str.strip()
     if not REQUIRED_CATEGORY_COLS.issubset(set(categories_df.columns)):
         raise ValueError(
-            f"В справочнике категорий ({path.name}) отсутствуют необходимые столбцы "
-            f"({', '.join(sorted(REQUIRED_CATEGORY_COLS))})."
+            f"В справочнике категорий ({get_reference_label(REF_CATEGORIES)}) "
+            f"отсутствуют необходимые столбцы ({', '.join(sorted(REQUIRED_CATEGORY_COLS))})."
         )
     return categories_df
 
 
 def _load_focus_reference() -> Optional[pd.DataFrame]:
-    path = REFERENCE_DIR / REFERENCE_FOCUS_FILENAME
-    if not path.is_file():
-        return None
-    return _read_excel(path)
-
-
-def _reference_path(filenames: tuple[str, ...]) -> Optional[Path]:
-    for name in filenames:
-        path = REFERENCE_DIR / name
-        if path.is_file():
-            return path
-    return None
+    return _safe_load_reference(REF_FOCUS)
 
 
 def _column_names_from_reference(df: pd.DataFrame, column: str) -> list[str]:
@@ -136,10 +111,9 @@ def _resolve_shops_order_column(order_df: pd.DataFrame) -> str | None:
 
 def _load_groups_order_rnp() -> Optional[list[str]]:
     """Порядок и список групп РНП для отчёта и формы новых магазинов."""
-    path = get_groups_order_reference_path()
-    if not path:
+    order_df = _safe_load_reference(REF_GROUPS_ORDER)
+    if order_df is None:
         return None
-    order_df = _read_excel(path)
     order_df.columns = order_df.columns.str.strip()
     col = _resolve_groups_order_column(order_df)
     return _column_names_from_reference(order_df, col)
@@ -147,10 +121,9 @@ def _load_groups_order_rnp() -> Optional[list[str]]:
 
 def _load_shops_order() -> Optional[list[str]]:
     """Порядок магазинов для блока «Экономика магазинов»."""
-    path = get_groups_order_reference_path()
-    if not path:
+    order_df = _safe_load_reference(REF_GROUPS_ORDER)
+    if order_df is None:
         return None
-    order_df = _read_excel(path)
     order_df.columns = order_df.columns.str.strip()
     col = _resolve_shops_order_column(order_df)
     if col is None:
@@ -159,16 +132,15 @@ def _load_shops_order() -> Optional[list[str]]:
 
 
 def _load_category_order() -> tuple[Optional[list[str]], Optional[list[str]]]:
-    """category_order.xlsx: «РНП» (обяз.), «Общий РНП» (опц.). Возвращает (rnp, general)."""
-    path = _reference_path(REFERENCE_CATEGORY_ORDER_FILENAMES)
-    if not path:
+    """category_order: «РНП» (обяз.), «Общий РНП» (опц.). Возвращает (rnp, general)."""
+    order_df = _safe_load_reference(REF_CATEGORY_ORDER)
+    if order_df is None:
         return None, None
-    order_df = _read_excel(path)
     order_df.columns = order_df.columns.str.strip()
     if CATEGORY_ORDER_COLUMN_RNP not in order_df.columns:
         raise ValueError(
-            f"В справочнике порядка категорий ({path.name}) отсутствует столбец "
-            f"«{CATEGORY_ORDER_COLUMN_RNP}»."
+            f"В справочнике порядка категорий ({get_reference_label(REF_CATEGORY_ORDER)}) "
+            f"отсутствует столбец «{CATEGORY_ORDER_COLUMN_RNP}»."
         )
     rnp = _column_names_from_reference(order_df, CATEGORY_ORDER_COLUMN_RNP)
     general = None
@@ -188,10 +160,13 @@ def load_all_data(files) -> AppData:
             ["Продажи с НДС", "Маржа", "Количество", "Неделя"],
         )
 
-    groups_path = _groups_reference_path()
-    groups_df = _read_excel(groups_path) if groups_path else None
+    groups_df = _safe_load_reference(REF_SHOP_GROUPS)
+    if groups_df is not None:
+        groups_df.columns = groups_df.columns.str.strip()
     categories_df = _load_categories_reference()
     focus_df = _load_focus_reference()
+    if focus_df is not None:
+        focus_df.columns = focus_df.columns.str.strip()
     groups_order_rnp = _load_groups_order_rnp()
     shops_order = _load_shops_order()
     category_order_rnp, category_order_general = _load_category_order()
