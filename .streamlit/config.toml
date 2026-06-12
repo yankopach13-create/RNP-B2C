@@ -1,5 +1,13 @@
 [theme]
 base = "dark"
-backgroundColor = "#0E1117"
+primaryColor = "#b23a3a"
+backgroundColor = "#0e1117"
 secondaryBackgroundColor = "#262730"
-textColor = "#FAFAFA"
+textColor = "#fafafa"
+
+[server]
+maxUploadSize = 200
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false

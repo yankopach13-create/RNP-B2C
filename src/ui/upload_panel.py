@@ -2,8 +2,9 @@ from dataclasses import dataclass
 
 import streamlit as st
 
+from ui.upload_help import render_section_header_with_help
+
 _XLSX_TYPES = ["xlsx", "xls"]
-_UPLOADER_LABEL = "XLS, XLSX"
 
 
 @dataclass
@@ -20,66 +21,80 @@ def render_upload_panel() -> UploadedFiles:
     """Панель загрузки данных."""
     container = st.container()
     with container:
-        _inject_upload_panel_styles()
-        col1, col2, col3 = st.columns(3)
+        col_sales, col_turnover, col_clients = st.columns(3)
 
-        with col1:
-            st.markdown(
-                "<h2 style='margin:0 0 0.35rem 0; padding:0; font-size:1.75rem;'>Продажи</h2>",
-                unsafe_allow_html=True,
+        with col_sales:
+            render_section_header_with_help(
+                title="Продажи",
+                image_name="sales.png",
+                caption=(
+                    "Скачайте отчёт по продажам B2C в формате XLSX или XLS.<br><br>"
+                    'Вставьте скачанный документ в контейнер «Продажи».'
+                ),
+                align="left",
             )
             data_file = st.file_uploader(
-                _UPLOADER_LABEL,
+                "Продажи",
                 type=_XLSX_TYPES,
-                key="data",
+                key="sales_uploader",
             )
 
-        with col2:
-            st.subheader("Оборачиваемость")
-            st.markdown(
-                "<div class='upload-item-name'>7 дней</div>",
-                unsafe_allow_html=True,
-            )
-            turnover_week_file = st.file_uploader(
-                _UPLOADER_LABEL,
-                type=_XLSX_TYPES,
-                key="turnover_week",
-            )
-            st.markdown(
-                "<div class='upload-item-name'>90 дней</div>",
-                unsafe_allow_html=True,
+        with col_turnover:
+            render_section_header_with_help(
+                title="Оборачиваемость",
+                image_name="turnover.png",
+                caption=(
+                    "Скачайте отчёты по оборачиваемости за 7 и 90 дней в формате XLSX или XLS.<br><br>"
+                    'Вставьте скачанные документы в контейнеры «Оборачиваемость (90 дней)» '
+                    'и «Оборачиваемость (7 дней)».'
+                ),
+                align="center",
             )
             turnover_90_file = st.file_uploader(
-                _UPLOADER_LABEL,
+                "Оборачиваемость (90 дней)",
                 type=_XLSX_TYPES,
-                key="turnover_90",
+                key="turnover_90_uploader",
+            )
+            turnover_week_file = st.file_uploader(
+                "Оборачиваемость (7 дней)",
+                type=_XLSX_TYPES,
+                key="turnover_week_uploader",
             )
 
-        with col3:
-            st.subheader("Чеки и клиенты")
-            st.markdown(
-                "<div class='upload-item-name'>Чеки и клиенты</div>",
-                unsafe_allow_html=True,
+        with col_clients:
+            render_section_header_with_help(
+                title="Чеки и клиенты",
+                image_name="checks_clients.png",
+                caption=(
+                    "Скачайте отчёт по чекам и клиентам в формате XLSX или XLS.<br><br>"
+                    'Вставьте скачанный документ в контейнер «Чеки и клиенты».'
+                ),
+                second_image_name="client_segments.png",
+                second_caption=(
+                    "Скачайте отчёт по сегментам покупателей в формате XLSX или XLS.<br><br>"
+                    'Вставьте скачанный документ в контейнер «Сегменты покупателей».'
+                ),
+                align="right",
+                two_column_layout=True,
+                compact_images=True,
             )
             checks_clients_file = st.file_uploader(
-                _UPLOADER_LABEL,
+                "Чеки и клиенты",
                 type=_XLSX_TYPES,
-                key="checks_clients",
-            )
-            st.markdown(
-                "<div class='upload-item-name'>Сегменты покупателей</div>",
-                unsafe_allow_html=True,
+                key="checks_clients_uploader",
             )
             client_segments_file = st.file_uploader(
-                _UPLOADER_LABEL,
+                "Сегменты покупателей",
                 type=_XLSX_TYPES,
-                key="client_segments",
+                key="client_segments_uploader",
             )
 
+        _inject_upload_page_styles()
+        st.markdown("")
         run_analysis = st.button(
             "Загрузить данные",
             type="primary",
-            key="upload_data_btn",
+            key="load_data_btn",
         )
 
     if run_analysis:
@@ -116,72 +131,180 @@ def render_upload_panel() -> UploadedFiles:
     return UploadedFiles()
 
 
-def _inject_upload_panel_styles() -> None:
+def _inject_upload_page_styles() -> None:
     st.markdown(
         """
         <style>
-        .upload-item-name {
-            font-size: 0.9rem;
+        .help-popover {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            text-align: right;
+            z-index: 10;
+        }
+        .help-popover--inline {
+            width: auto;
+            text-align: left;
+            flex-shrink: 0;
+        }
+        .help-popover__toggle {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .help-popover__trigger {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 0.5rem;
+            color: rgba(250, 250, 250, 0.95);
+            cursor: pointer;
+            user-select: none;
+            font-size: 1.05rem;
+            line-height: 1;
+            background: rgba(255, 255, 255, 0.04);
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+            position: relative;
+            z-index: 1000;
+        }
+        .help-popover__trigger:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.55);
+        }
+        .help-popover__backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 998;
+            background: transparent;
+        }
+        .help-popover__panel {
+            display: none;
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            width: min(68vw, 760px);
+            min-width: min(92vw, 360px);
+            max-width: 92vw;
+            max-height: 72vh;
+            overflow: auto;
+            padding: 0.9rem;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(250, 250, 250, 0.18);
+            background: rgba(15, 15, 15, 0.98);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+            text-align: left;
+            z-index: 999;
+        }
+        .help-popover--left .help-popover__panel {
+            left: 0;
+            right: auto;
+        }
+        .help-popover--center .help-popover__panel {
+            left: 50%;
+            right: auto;
+            transform: translateX(-50%);
+        }
+        .help-popover--right .help-popover__panel {
+            right: 0;
+            left: auto;
+        }
+        .help-popover__toggle:checked ~ .help-popover__backdrop {
+            display: block;
+        }
+        .help-popover__toggle:checked ~ .help-popover__panel {
+            display: block;
+        }
+        .help-popover__caption {
+            white-space: pre-line;
+            font-size: 0.95rem;
+            color: rgba(250, 250, 250, 0.86);
+            margin-bottom: 0.75rem;
+        }
+        .help-popover__image-wrapper {
+            margin-bottom: 1rem;
+        }
+        .help-popover__image {
+            width: 100%;
+            height: auto;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(250, 250, 250, 0.16);
+        }
+        .help-popover--compact .help-popover__image {
+            max-height: 280px;
+            object-fit: contain;
+            background: rgba(0, 0, 0, 0.15);
+        }
+        .help-popover__split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.3rem;
+        }
+        .help-popover__split-text {
+            display: block;
+        }
+        .help-popover__row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.3rem;
+            margin-bottom: 0.75rem;
+        }
+        .help-popover__paragraph {
+            white-space: pre-line;
+            font-size: 0.95rem;
+            color: rgba(250, 250, 250, 0.86);
+            min-height: 1.45rem;
+        }
+        .help-popover__split-col {
+            min-width: 0;
+        }
+        .help-popover__split-images .help-popover__split-col {
+            display: flex;
+            align-items: flex-start;
+        }
+        .help-popover__split-images .help-popover__image-wrapper {
+            width: 100%;
+        }
+        @media (max-width: 1100px) {
+            .help-popover__split {
+                grid-template-columns: 1fr;
+            }
+        }
+        .help-popover__download {
+            display: inline-block;
+            margin-top: 0.55rem;
+            color: #d95f5f;
+            text-decoration: none;
             font-weight: 600;
-            color: #FAFAFA;
-            margin: 0.15rem 0 0.1rem 0;
         }
-        div[data-testid="stFileUploader"] {
-            margin-bottom: 0.35rem;
+        .help-popover__download:hover {
+            text-decoration: underline;
         }
-        div[data-testid="stFileUploader"] label {
-            margin-bottom: 0.15rem !important;
+        .help-popover__warning {
+            color: #ff8f8f;
+            font-size: 0.92rem;
+            margin-bottom: 0.85rem;
         }
-        div[data-testid="stFileUploader"] label p {
-            font-size: 0.85rem !important;
-            color: #A3A8B4 !important;
-            margin: 0 !important;
+        .st-key-load_data_btn button {
+            background-color: #b23a3a !important;
+            border: 1px solid #b23a3a !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
         }
-        div[data-testid="stFileUploader"] label [data-testid="stTooltipIcon"],
-        div[data-testid="stFileUploader"] label button {
-            display: none !important;
+        .st-key-load_data_btn button:hover {
+            background-color: #9a3131 !important;
+            border-color: #9a3131 !important;
         }
-        section[data-testid="stFileUploaderDropzone"] {
-            min-height: 2.1rem !important;
-            padding: 0.3rem 0.65rem !important;
-        }
-        section[data-testid="stFileUploaderDropzone"] > div {
-            align-items: center !important;
-            gap: 0.5rem !important;
-            min-height: 0 !important;
-        }
-        section[data-testid="stFileUploaderDropzone"] > div > div:first-child {
-            display: none !important;
-        }
-        section[data-testid="stFileUploaderDropzone"] button {
-            display: inline-flex !important;
-            margin-left: auto !important;
-            min-height: 1.75rem !important;
-            padding: 0.2rem 0.65rem !important;
-            font-size: 0.8rem !important;
-        }
-        section[data-testid="stFileUploaderDropzone"]:has([data-testid="stFileUploaderFile"]) > div > div:first-child {
-            display: flex !important;
-            flex: 1 !important;
-            min-width: 0 !important;
-            font-size: 0.82rem !important;
-            color: #FAFAFA !important;
-        }
-        section[data-testid="stFileUploaderDropzone"]:has([data-testid="stFileUploaderFile"]) svg,
-        section[data-testid="stFileUploaderDropzone"]:has([data-testid="stFileUploaderFile"]) small {
-            display: none !important;
-        }
-        .st-key-upload_data_btn button[kind="primary"] {
-            background-color: #e84545 !important;
-            border-color: #e84545 !important;
-        }
-        .st-key-upload_data_btn button[kind="primary"]:hover,
-        .st-key-upload_data_btn button[kind="primary"]:active,
-        .st-key-upload_data_btn button[kind="primary"]:focus,
-        .st-key-upload_data_btn button[kind="primary"]:focus-visible {
-            background-color: #d63f3f !important;
-            border-color: #d63f3f !important;
+        .st-key-load_data_btn button:active,
+        .st-key-load_data_btn button:focus,
+        .st-key-load_data_btn button:focus-visible {
+            background-color: #9a3131 !important;
+            border-color: #9a3131 !important;
+            color: #ffffff !important;
             box-shadow: none !important;
+            outline: none !important;
         }
         </style>
         """,
