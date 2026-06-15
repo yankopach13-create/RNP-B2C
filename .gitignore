@@ -4,6 +4,8 @@ streamlit-cloud-secrets.toml
 src/data/reference/*.xlsx
 src/data/reference/*.xls
 __pycache__/
+**/__pycache__/
 *.pyc
+**/*.pyc
 .venv/
 venv/

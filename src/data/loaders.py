@@ -10,15 +10,13 @@ from config.constants import (
     GROUPS_ORDER_COLUMN_SHOPS_CANDIDATES,
     REQUIRED_CATEGORY_COLS,
 )
-from data.references import (
-    REF_CATEGORIES,
-    REF_CATEGORY_ORDER,
-    REF_FOCUS,
-    REF_GROUPS_ORDER,
-    REF_SHOP_GROUPS,
-    get_reference_label,
-    load_reference,
-)
+
+
+def _references():
+    from data import references
+
+    return references
+
 
 @dataclass
 class AppData:
@@ -42,7 +40,7 @@ def _read_excel(file, **kwargs) -> pd.DataFrame:
 
 def _safe_load_reference(key: str) -> Optional[pd.DataFrame]:
     try:
-        return load_reference(key)
+        return _references().load_reference(key)
     except FileNotFoundError:
         return None
 
@@ -66,20 +64,21 @@ def _coerce_numeric_columns(df: pd.DataFrame, columns: list[str]) -> None:
 
 
 def _load_categories_reference() -> Optional[pd.DataFrame]:
-    categories_df = _safe_load_reference(REF_CATEGORIES)
+    refs = _references()
+    categories_df = _safe_load_reference(refs.REF_CATEGORIES)
     if categories_df is None:
         return None
     categories_df.columns = categories_df.columns.str.strip()
     if not REQUIRED_CATEGORY_COLS.issubset(set(categories_df.columns)):
         raise ValueError(
-            f"В справочнике категорий ({get_reference_label(REF_CATEGORIES)}) "
+            f"В справочнике категорий ({refs.get_reference_label(refs.REF_CATEGORIES)}) "
             f"отсутствуют необходимые столбцы ({', '.join(sorted(REQUIRED_CATEGORY_COLS))})."
         )
     return categories_df
 
 
 def _load_focus_reference() -> Optional[pd.DataFrame]:
-    return _safe_load_reference(REF_FOCUS)
+    return _safe_load_reference(_references().REF_FOCUS)
 
 
 def _column_names_from_reference(df: pd.DataFrame, column: str) -> list[str]:
@@ -111,7 +110,7 @@ def _resolve_shops_order_column(order_df: pd.DataFrame) -> str | None:
 
 def _load_groups_order_rnp() -> Optional[list[str]]:
     """Порядок и список групп РНП для отчёта и формы новых магазинов."""
-    order_df = _safe_load_reference(REF_GROUPS_ORDER)
+    order_df = _safe_load_reference(_references().REF_GROUPS_ORDER)
     if order_df is None:
         return None
     order_df.columns = order_df.columns.str.strip()
@@ -121,7 +120,7 @@ def _load_groups_order_rnp() -> Optional[list[str]]:
 
 def _load_shops_order() -> Optional[list[str]]:
     """Порядок магазинов для блока «Экономика магазинов»."""
-    order_df = _safe_load_reference(REF_GROUPS_ORDER)
+    order_df = _safe_load_reference(_references().REF_GROUPS_ORDER)
     if order_df is None:
         return None
     order_df.columns = order_df.columns.str.strip()
@@ -133,13 +132,14 @@ def _load_shops_order() -> Optional[list[str]]:
 
 def _load_category_order() -> tuple[Optional[list[str]], Optional[list[str]]]:
     """category_order: «РНП» (обяз.), «Общий РНП» (опц.). Возвращает (rnp, general)."""
-    order_df = _safe_load_reference(REF_CATEGORY_ORDER)
+    refs = _references()
+    order_df = _safe_load_reference(refs.REF_CATEGORY_ORDER)
     if order_df is None:
         return None, None
     order_df.columns = order_df.columns.str.strip()
     if CATEGORY_ORDER_COLUMN_RNP not in order_df.columns:
         raise ValueError(
-            f"В справочнике порядка категорий ({get_reference_label(REF_CATEGORY_ORDER)}) "
+            f"В справочнике порядка категорий ({refs.get_reference_label(refs.REF_CATEGORY_ORDER)}) "
             f"отсутствует столбец «{CATEGORY_ORDER_COLUMN_RNP}»."
         )
     rnp = _column_names_from_reference(order_df, CATEGORY_ORDER_COLUMN_RNP)
@@ -160,7 +160,7 @@ def load_all_data(files) -> AppData:
             ["Продажи с НДС", "Маржа", "Количество", "Неделя"],
         )
 
-    groups_df = _safe_load_reference(REF_SHOP_GROUPS)
+    groups_df = _safe_load_reference(_references().REF_SHOP_GROUPS)
     if groups_df is not None:
         groups_df.columns = groups_df.columns.str.strip()
     categories_df = _load_categories_reference()
