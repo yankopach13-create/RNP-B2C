@@ -1,3 +1,15 @@
+"""Точка входа B2C РНП (локально и Streamlit Cloud)."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Корень пакетов: src/ (нужно при запуске streamlit run src/app.py на Cloud)
+_SRC_ROOT = Path(__file__).resolve().parent
+if str(_SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SRC_ROOT))
+
 import pandas as pd
 import streamlit as st
 
