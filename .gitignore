@@ -1,5 +1,6 @@
 service-account.json
 .streamlit/secrets.toml
+streamlit-cloud-secrets.toml
 src/data/reference/*.xlsx
 src/data/reference/*.xls
 __pycache__/

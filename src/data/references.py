@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
 from config.constants import REFERENCE_DIR, REFERENCE_GROUPS_FILENAMES
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_SECRETS_PATH = _PROJECT_ROOT / ".streamlit" / "secrets.toml"
 
 REF_SHOP_GROUPS = "shop_groups"
 REF_CATEGORIES = "categories"
@@ -52,23 +57,95 @@ SCOPES = [
 _PLACEHOLDER_SPREADSHEET_ID = "REPLACE_WITH_YOUR_SPREADSHEET_ID"
 
 
+def _is_streamlit_cloud() -> bool:
+    """Streamlit Community Cloud / Snowflake — локальные xlsx в контейнере не персистятся."""
+    if os.environ.get("STREAMLIT_CLOUD") or os.environ.get("STREAMLIT_SHARING_BASE_URL"):
+        return True
+    server_url = os.environ.get("STREAMLIT_SERVER_URL", "")
+    return "streamlit.app" in server_url
+
+
+def _secrets_setup_hint() -> str:
+    if _is_streamlit_cloud():
+        return (
+            "Streamlit Cloud → Manage app → Settings → Secrets: "
+            "вставьте содержимое из .streamlit/secrets.toml.example "
+            "(данные service-account) и перезапустите приложение."
+        )
+    return (
+        "Локально: положите service-account.json в корень проекта и выполните "
+        "python scripts/build_secrets.py, либо настройте .streamlit/secrets.toml."
+    )
+
+
+@lru_cache(maxsize=1)
+def _file_secrets() -> dict[str, Any]:
+    if not _SECRETS_PATH.is_file():
+        return {}
+    import tomllib
+
+    return tomllib.loads(_SECRETS_PATH.read_text(encoding="utf-8"))
+
+
+def _gcp_service_account_info() -> dict[str, Any]:
+    try:
+        if "gcp_service_account" in st.secrets:
+            return dict(st.secrets["gcp_service_account"])
+    except Exception:  # noqa: BLE001
+        pass
+    return dict(_file_secrets().get("gcp_service_account", {}))
+
+
 def _references_config() -> dict[str, Any]:
     try:
-        return dict(st.secrets.get("references", {}))
+        refs = dict(st.secrets.get("references", {}))
+        if refs:
+            return refs
     except Exception:  # noqa: BLE001
-        return {}
+        pass
+    return dict(_file_secrets().get("references", {}))
 
 
 def sheets_configured() -> bool:
     """True, если в secrets заданы учётные данные и ID таблицы."""
-    try:
-        if "gcp_service_account" not in st.secrets:
-            return False
-        refs = _references_config()
-        spreadsheet_id = str(refs.get("spreadsheet_id", "")).strip()
-        return bool(spreadsheet_id) and spreadsheet_id != _PLACEHOLDER_SPREADSHEET_ID
-    except Exception:  # noqa: BLE001
+    info = _gcp_service_account_info()
+    if not info.get("client_email") or not info.get("private_key"):
         return False
+    refs = _references_config()
+    spreadsheet_id = str(refs.get("spreadsheet_id", "")).strip()
+    return bool(spreadsheet_id) and spreadsheet_id != _PLACEHOLDER_SPREADSHEET_ID
+
+
+def get_reference_storage_hint(key: str) -> str:
+    """Куда попадёт запись — для сообщений в UI."""
+    if sheets_configured():
+        return f"Google Sheets, лист «{_sheet_name(key)}»"
+    return get_reference_label(key)
+
+
+def get_sheets_connection_message() -> tuple[str, str]:
+    """
+    Статус подключения к Google Sheets для UI.
+    Возвращает (уровень: ok|warn|error, текст).
+    """
+    if sheets_configured():
+        refs = _references_config()
+        sid = str(refs.get("spreadsheet_id", "")).strip()
+        email = str(_gcp_service_account_info().get("client_email", "")).strip()
+        return (
+            "ok",
+            f"Справочники: Google Sheets ({email or 'service account'})",
+        )
+    if _is_streamlit_cloud():
+        return (
+            "error",
+            "Google Sheets не подключён. Задайте Secrets в панели Streamlit Cloud "
+            "(см. .streamlit/secrets.toml.example).",
+        )
+    return (
+        "warn",
+        "Google Sheets не подключён — используются локальные файлы src/data/reference/.",
+    )
 
 
 def _sheet_name(key: str) -> str:
@@ -147,11 +224,33 @@ def _get_gspread_client():
     import gspread
     from google.oauth2.service_account import Credentials
 
-    info = dict(st.secrets["gcp_service_account"])
+    info = _gcp_service_account_info()
     credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
     client = gspread.authorize(credentials)
     _apply_ssl_verify(client)
     return client
+
+
+def _cell_value(value: Any) -> Any:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if pd.isna(value):
+        return ""
+    return value
+
+
+def _dataframe_to_sheet_values(df: pd.DataFrame) -> list[list[Any]]:
+    payload = df.copy().where(pd.notnull(df), "")
+    values: list[list[Any]] = [[str(c) for c in payload.columns.tolist()]]
+    for row in payload.itertuples(index=False, name=None):
+        values.append([_cell_value(v) for v in row])
+    return values
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -172,12 +271,11 @@ def _save_to_sheets(spreadsheet_id: str, worksheet_name: str, df: pd.DataFrame) 
     worksheet = client.open_by_key(spreadsheet_id).worksheet(worksheet_name)
     worksheet.clear()
     if df.empty and list(df.columns):
-        worksheet.update([list(df.columns)])
+        worksheet.update([list(df.columns)], value_input_option="USER_ENTERED")
         return
     if df.empty:
         return
-    payload = df.copy().where(pd.notnull(df), "")
-    values = [payload.columns.tolist()] + payload.values.tolist()
+    values = _dataframe_to_sheet_values(df)
     worksheet.update(values, value_input_option="USER_ENTERED")
 
 
@@ -190,6 +288,12 @@ def load_reference(key: str) -> pd.DataFrame:
         refs = _references_config()
         spreadsheet_id = str(refs["spreadsheet_id"]).strip()
         return _load_from_sheets(spreadsheet_id, _sheet_name(key)).copy()
+
+    if _is_streamlit_cloud():
+        raise FileNotFoundError(
+            f"Справочник «{get_reference_title(key)}» недоступен: Google Sheets не настроен. "
+            f"{_secrets_setup_hint()}"
+        )
 
     local_path = _local_path(key)
     if local_path is None:
@@ -208,6 +312,11 @@ def save_reference(key: str, df: pd.DataFrame) -> None:
         refs = _references_config()
         spreadsheet_id = str(refs["spreadsheet_id"]).strip()
         _save_to_sheets(spreadsheet_id, _sheet_name(key), df)
+    elif _is_streamlit_cloud():
+        raise RuntimeError(
+            f"Нельзя сохранить справочник «{get_reference_title(key)}» без Google Sheets. "
+            f"{_secrets_setup_hint()}"
+        )
     else:
         local_path = _local_path(key)
         if local_path is None:

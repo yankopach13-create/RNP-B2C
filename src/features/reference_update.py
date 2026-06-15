@@ -20,6 +20,7 @@ from data.references import (
     REF_GROUPS_ORDER,
     REF_SHOP_GROUPS,
     get_reference_label,
+    get_reference_storage_hint,
     load_reference,
     reference_exists,
     save_reference,
@@ -27,14 +28,33 @@ from data.references import (
 from features.categories import format_category_pair, parse_category_pair
 
 
-def _load_or_empty(key: str, default_columns: list[str]) -> pd.DataFrame | None:
+def _try_load_reference(key: str) -> tuple[pd.DataFrame | None, str | None]:
+    try:
+        return load_reference(key), None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"Не удалось прочитать справочник ({get_reference_label(key)}): {exc}"
+
+
+def _try_save_reference(key: str, df: pd.DataFrame) -> tuple[bool, str | None]:
+    try:
+        save_reference(key, df)
+    except Exception as exc:  # noqa: BLE001
+        return False, (
+            f"Не удалось записать в {get_reference_storage_hint(key)}: {exc}"
+        )
+    return True, None
+
+
+def _load_or_empty(key: str, default_columns: list[str]) -> tuple[pd.DataFrame | None, str | None]:
     if not reference_exists(key):
-        return None
-    df = load_reference(key)
+        return None, None
+    df, err = _try_load_reference(key)
+    if err:
+        return None, err
     df.columns = df.columns.str.strip()
     if df.empty and not list(df.columns):
-        return pd.DataFrame(columns=default_columns)
-    return df
+        return pd.DataFrame(columns=default_columns), None
+    return df, None
 
 
 def add_shop_to_reference(
@@ -55,7 +75,9 @@ def add_shop_to_reference(
         return False, "Укажите магазин и группу РНП."
 
     default_cols = ["Магазин", "Группа", SHOP_GROUP_COLUMN_GENERAL]
-    df = _load_or_empty(REF_SHOP_GROUPS, default_cols)
+    df, err = _load_or_empty(REF_SHOP_GROUPS, default_cols)
+    if err:
+        return False, err
     if df is None:
         return False, f"Не найден справочник магазинов ({get_reference_label(REF_SHOP_GROUPS)})."
 
@@ -77,10 +99,13 @@ def add_shop_to_reference(
             if c not in row:
                 row[c] = ""
         df = pd.concat([df, pd.DataFrame([{c: row.get(c, "") for c in df.columns}])], ignore_index=True)
-    save_reference(REF_SHOP_GROUPS, df)
+    ok, err = _try_save_reference(REF_SHOP_GROUPS, df)
+    if not ok:
+        return False, err or "Ошибка записи справочника магазинов."
     if is_new_shop:
         append_shop_to_groups_order(shop_name)
-    return True, "Справочник магазинов обновлён."
+    hint = get_reference_storage_hint(REF_SHOP_GROUPS)
+    return True, f"Справочник магазинов обновлён ({hint})."
 
 
 def _resolve_shops_order_column(order_df: pd.DataFrame) -> str | None:
@@ -105,7 +130,9 @@ def append_shop_to_groups_order(shop_name: str) -> tuple[bool, str]:
 
     default_cols = list(GROUPS_ORDER_COLUMN_CANDIDATES) + [GROUPS_ORDER_COLUMN_SHOPS]
     if reference_exists(REF_GROUPS_ORDER):
-        df = load_reference(REF_GROUPS_ORDER)
+        df, err = _try_load_reference(REF_GROUPS_ORDER)
+        if err:
+            return False, err
     else:
         df = pd.DataFrame(columns=default_cols)
 
@@ -129,7 +156,9 @@ def append_shop_to_groups_order(shop_name: str) -> tuple[bool, str]:
     row: dict = {c: "" for c in df.columns}
     row[shops_col] = shop_name
     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    save_reference(REF_GROUPS_ORDER, df)
+    ok, err = _try_save_reference(REF_GROUPS_ORDER, df)
+    if not ok:
+        return False, err or "Ошибка записи порядка магазинов."
     return True, "Магазин добавлен в конец списка «Порядок магазинов»."
 
 
@@ -241,7 +270,9 @@ def insert_categories_to_order(
         return False, "Пустые названия категорий."
 
     if reference_exists(REF_CATEGORY_ORDER):
-        df = load_reference(REF_CATEGORY_ORDER)
+        df, err = _try_load_reference(REF_CATEGORY_ORDER)
+        if err:
+            return False, err
     else:
         df = pd.DataFrame(
             columns=[CATEGORY_ORDER_COLUMN_RNP, CATEGORY_ORDER_COLUMN_GENERAL]
@@ -271,8 +302,11 @@ def insert_categories_to_order(
         return True, "Категории уже есть в порядке отчёта."
 
     df = _order_lists_to_dataframe(rnp_list, gen_list, list(df.columns), rnp_col, gen_col)
-    save_reference(REF_CATEGORY_ORDER, df)
-    return True, "Добавлено в category_order: " + ", ".join(added)
+    ok, err = _try_save_reference(REF_CATEGORY_ORDER, df)
+    if not ok:
+        return False, err or "Ошибка записи порядка категорий."
+    hint = get_reference_storage_hint(REF_CATEGORY_ORDER)
+    return True, f"Добавлено в category_order ({hint}): " + ", ".join(added)
 
 
 def _position_label(after: str | None, items: list[str], name: str) -> str:
@@ -312,7 +346,9 @@ def add_product_to_reference(
     if not reference_exists(REF_CATEGORIES):
         return False, f"Не найден справочник категорий ({get_reference_label(REF_CATEGORIES)})."
 
-    df = load_reference(REF_CATEGORIES)
+    df, err = _try_load_reference(REF_CATEGORIES)
+    if err:
+        return False, err
     df.columns = df.columns.str.strip()
     for col in (CATEGORY_COLUMN_RNP, "Товар ур.2", "Товар ур.3"):
         if col not in df.columns:
@@ -350,5 +386,8 @@ def add_product_to_reference(
             row[c] = ""
     new_row = pd.DataFrame([{c: row.get(c, "") for c in df.columns}])
     df = pd.concat([df, new_row], ignore_index=True)
-    save_reference(REF_CATEGORIES, df)
-    return True, "Справочник категорий обновлён."
+    ok, err = _try_save_reference(REF_CATEGORIES, df)
+    if not ok:
+        return False, err or "Ошибка записи справочника категорий."
+    hint = get_reference_storage_hint(REF_CATEGORIES)
+    return True, f"Справочник категорий обновлён ({hint})."

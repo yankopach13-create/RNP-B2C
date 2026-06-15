@@ -7,6 +7,7 @@ import re
 
 import streamlit as st
 
+from data.references import get_sheets_connection_message, sheets_configured
 from features.categories import (
     category_pair_label,
     format_category_pair,
@@ -229,6 +230,12 @@ def render_quick_reference_update(
         f'<p style="{_ST["title"]}">Быстрое добавление в справочники</p>',
         unsafe_allow_html=True,
     )
+    if not sheets_configured():
+        level, msg = get_sheets_connection_message()
+        if level == "error":
+            st.error(msg)
+        else:
+            st.warning(msg)
 
     group_options = resolve_groups_order(groups_order_rnp)
     if not groups_order_rnp and groups_df is not None and "Группа" in groups_df.columns:
@@ -357,7 +364,11 @@ def render_quick_reference_update(
                     rnp_after=rnp_after,
                     general_after=gen_after,
                 )
+                if ok_order:
+                    ok_any = ok_any or ("Добавлено" in msg_order)
                 if ok_order and "Добавлено" in msg_order:
+                    messages.append(msg_order)
+                elif not ok_order:
                     messages.append(msg_order)
 
             n_dup = 0
@@ -379,7 +390,9 @@ def render_quick_reference_update(
     for m in messages:
         if "обновл" in m.lower() or "актуальна" in m.lower() or "Добавлено" in m:
             st.success(m)
-        elif "уже есть" in m.lower() or m.startswith("Не "):
+        elif "не удалось" in m.lower() or m.startswith("Не "):
+            st.error(m)
+        elif "уже есть" in m.lower():
             st.warning(m)
         else:
             st.info(m)
