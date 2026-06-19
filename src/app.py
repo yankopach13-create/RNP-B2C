@@ -23,6 +23,7 @@ from features.data_prep import (
 )
 from features.clients import render_client_block
 from features.lfl import render_lfl_block
+from features.hookah_products import render_hookah_products_block
 from features.metrics import (
     render_financial_metrics_table,
     render_global_metrics,
@@ -554,14 +555,16 @@ def _render_shop_economy_and_lfl(
     excise_lfl_qty: float = 0.0,
     excise_report_qty: float = 0.0,
 ) -> None:
-    """Экономика магазинов слева, факторный анализ справа."""
+    """Экономика магазинов, факторный анализ и кальянная продукция."""
     has_shop = sales_df is not None and not sales_df.empty
     has_lfl = data.lfl is not None
     if not has_shop and not has_lfl:
+        st.divider()
+        render_hookah_products_block(embedded=True)
         return
 
     st.divider()
-    col_shop, col_lfl = st.columns([1, 1.2])
+    col_shop, col_lfl, col_hookah = st.columns([1, 1.2, 0.95])
 
     with col_shop:
         st.markdown("**Экономика магазинов**")
@@ -594,6 +597,9 @@ def _render_shop_economy_and_lfl(
                 "Нет данных для факторного анализа "
                 "(загрузите продажи с колонкой «Неделя» или отдельный файл)."
             )
+
+    with col_hookah:
+        render_hookah_products_block(embedded=True)
 
 
 if __name__ == "__main__":
