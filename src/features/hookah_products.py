@@ -8,6 +8,8 @@ import streamlit as st
 COL_METRIC = "Метрика"
 COL_VALUE = "Значение"
 HOOKAH_TABLE_ROW_HEIGHT_PX = 35
+HOOKAH_METRIC_COL_WIDTH_PX = 210
+HOOKAH_VALUE_COL_WIDTH_PX = 68
 
 _HOOKAH_METRIC_ROWS: tuple[str | None, ...] = (
     "1.1 Бестабачная Смесь",
@@ -66,7 +68,11 @@ def render_hookah_products_block(*, embedded: bool = False) -> None:
         hide_index=True,
         row_height=HOOKAH_TABLE_ROW_HEIGHT_PX,
         column_config={
-            COL_METRIC: st.column_config.TextColumn(COL_METRIC, width=220),
-            COL_VALUE: st.column_config.TextColumn(COL_VALUE, width=100),
+            COL_METRIC: st.column_config.TextColumn(
+                COL_METRIC, width=HOOKAH_METRIC_COL_WIDTH_PX
+            ),
+            COL_VALUE: st.column_config.TextColumn(
+                COL_VALUE, width=HOOKAH_VALUE_COL_WIDTH_PX
+            ),
         },
     )

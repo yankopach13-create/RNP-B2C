@@ -14,6 +14,8 @@ class UploadedFiles:
     client_segments: object = None
     turnover_week: object = None
     turnover_90: object = None
+    focus_hookah: object = None
+    focus_fill_free: object = None
     run_analysis: bool = False
 
 
@@ -21,7 +23,7 @@ def render_upload_panel() -> UploadedFiles:
     """Панель загрузки данных."""
     container = st.container()
     with container:
-        col_sales, col_turnover, col_clients = st.columns(3)
+        col_sales, col_turnover, col_clients, col_focus = st.columns(4)
 
         with col_sales:
             render_section_header_with_help(
@@ -106,6 +108,29 @@ def render_upload_panel() -> UploadedFiles:
                 key="client_segments_uploader",
             )
 
+        with col_focus:
+            st.subheader("Категории в фокусе")
+            st.markdown(
+                "<p class='upload-mini-title'>Кальянная продукция</p>",
+                unsafe_allow_html=True,
+            )
+            focus_hookah_file = st.file_uploader(
+                "Кальянная продукция",
+                type=_XLSX_TYPES,
+                key="focus_hookah_uploader",
+                label_visibility="collapsed",
+            )
+            st.markdown(
+                "<p class='upload-mini-title'>Fill free</p>",
+                unsafe_allow_html=True,
+            )
+            focus_fill_free_file = st.file_uploader(
+                "Fill free",
+                type=_XLSX_TYPES,
+                key="focus_fill_free_uploader",
+                label_visibility="collapsed",
+            )
+
         _inject_upload_page_styles()
         st.markdown("")
         run_analysis = st.button(
@@ -122,6 +147,8 @@ def render_upload_panel() -> UploadedFiles:
             "client_segments": client_segments_file,
             "turnover_week": turnover_week_file,
             "turnover_90": turnover_90_file,
+            "focus_hookah": focus_hookah_file,
+            "focus_fill_free": focus_fill_free_file,
         }
         st.session_state["run_analysis"] = True
         container.empty()
@@ -131,6 +158,8 @@ def render_upload_panel() -> UploadedFiles:
             client_segments=client_segments_file,
             turnover_week=turnover_week_file,
             turnover_90=turnover_90_file,
+            focus_hookah=focus_hookah_file,
+            focus_fill_free=focus_fill_free_file,
             run_analysis=True,
         )
 
@@ -142,6 +171,8 @@ def render_upload_panel() -> UploadedFiles:
             client_segments=u.get("client_segments"),
             turnover_week=u.get("turnover_week"),
             turnover_90=u.get("turnover_90"),
+            focus_hookah=u.get("focus_hookah"),
+            focus_fill_free=u.get("focus_fill_free"),
             run_analysis=True,
         )
 
@@ -318,6 +349,12 @@ def _inject_upload_page_styles() -> None:
             color: #ff8f8f;
             font-size: 0.92rem;
             margin-bottom: 0.85rem;
+        }
+        .upload-mini-title {
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: rgba(250, 250, 250, 0.9);
+            margin: 0.35rem 0 0.15rem;
         }
         .st-key-load_data_btn button {
             background-color: #b23a3a !important;

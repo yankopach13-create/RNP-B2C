@@ -567,7 +567,7 @@ def _render_shop_economy_and_lfl(
         return
 
     st.divider()
-    col_shop, col_lfl, col_hookah = st.columns([0.72, 1.38, 0.9])
+    col_shop, col_lfl, col_hookah = st.columns([0.72, 1.45, 0.82])
 
     with col_shop:
         st.markdown("**Экономика магазинов**")
