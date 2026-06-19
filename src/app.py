@@ -77,8 +77,15 @@ def main():
         try:
             with st.spinner("Загрузка и подготовка данных…"):
                 data, prepared = load_and_store_app_data(files)
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
             st.error(str(exc))
+            st.stop()
+        except Exception as exc:
+            st.error(
+                "Ошибка при чтении загруженных файлов. "
+                "Проверьте, что все файлы — корректные .xlsx из Qlik (без форматирования)."
+            )
+            st.caption(str(exc))
             st.stop()
     else:
         data = get_stored_app_data()

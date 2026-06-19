@@ -1,5 +1,6 @@
+import io
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -34,8 +35,53 @@ class AppData:
     category_order_general: Optional[list[str]]
     shops_order: Optional[list[str]]
 
-def _read_excel(file, **kwargs) -> pd.DataFrame:
-    return pd.read_excel(file, **kwargs)
+def _excel_file_label(file: Any, fallback: str) -> str:
+    name = getattr(file, "name", None)
+    if name:
+        return str(name).strip()
+    return fallback
+
+
+def _excel_buffer(file: Any) -> io.BytesIO:
+    if hasattr(file, "seek"):
+        file.seek(0)
+    if hasattr(file, "read"):
+        content = file.read()
+        if not content:
+            raise ValueError("Файл пустой.")
+        return io.BytesIO(content)
+    return file
+
+
+def _read_excel(file, *, label: str = "Excel", **kwargs) -> pd.DataFrame:
+    """Читает загруженный xlsx; устойчив к повторному чтению и «битым» read_only."""
+    file_label = _excel_file_label(file, label)
+    try:
+        buffer = _excel_buffer(file)
+    except ValueError as exc:
+        raise ValueError(f"Файл «{file_label}» пустой.") from exc
+
+    attempts: list[tuple[str, dict[str, Any]]] = [
+        (
+            "openpyxl",
+            {"engine": "openpyxl", "engine_kwargs": {"read_only": False, "data_only": True}},
+        ),
+        ("openpyxl (read_only)", {"engine": "openpyxl"}),
+    ]
+
+    last_error: Exception | None = None
+    for _, read_kwargs in attempts:
+        buffer.seek(0)
+        try:
+            return pd.read_excel(buffer, **read_kwargs, **kwargs)
+        except Exception as exc:
+            last_error = exc
+
+    raise ValueError(
+        f"Не удалось прочитать файл «{file_label}». "
+        "Файл повреждён или имеет неподдерживаемый формат Excel. "
+        "Скачайте отчёт из Qlik в формате .xlsx без форматирования и загрузите снова."
+    ) from last_error
 
 
 def _safe_load_reference(key: str) -> Optional[pd.DataFrame]:
@@ -151,7 +197,7 @@ def _load_category_order() -> tuple[Optional[list[str]], Optional[list[str]]]:
 
 def load_all_data(files) -> AppData:
     # Все файлы теперь опциональны
-    sales_df = _read_excel(files.sales) if files.sales else None
+    sales_df = _read_excel(files.sales, label="Продажи") if files.sales else None
     if sales_df is not None:
         sales_df = sales_df.copy()
         sales_df.columns = sales_df.columns.str.strip()
@@ -173,7 +219,7 @@ def load_all_data(files) -> AppData:
 
     lfl_df = None
     if getattr(files, "lfl", None):
-        lfl_df = _read_excel(files.lfl)
+        lfl_df = _read_excel(files.lfl, label="LFL")
         lfl_df.columns = lfl_df.columns.str.strip()
         _coerce_numeric_columns(
             lfl_df,
@@ -182,8 +228,16 @@ def load_all_data(files) -> AppData:
     elif sales_df is not None and "Неделя" in sales_df.columns:
         lfl_df = sales_df
 
-    turnover_week_df = _read_excel(files.turnover_week) if files.turnover_week else None
-    turnover_90_df = _read_excel(files.turnover_90) if files.turnover_90 else None
+    turnover_week_df = (
+        _read_excel(files.turnover_week, label="Оборачиваемость (7 дней)")
+        if files.turnover_week
+        else None
+    )
+    turnover_90_df = (
+        _read_excel(files.turnover_90, label="Оборачиваемость (90 дней)")
+        if files.turnover_90
+        else None
+    )
     for tdf in (turnover_week_df, turnover_90_df):
         if tdf is not None:
             tdf.columns = tdf.columns.str.strip()
@@ -192,7 +246,9 @@ def load_all_data(files) -> AppData:
                 ["Остаток сред.дн. (Q)", "Продажи (Q)", "Продажи с НДС", "Маржа"],
             )
     checks_clients_df = (
-        _read_excel(files.checks_clients) if files.checks_clients else None
+        _read_excel(files.checks_clients, label="Чеки и клиенты")
+        if files.checks_clients
+        else None
     )
     if checks_clients_df is not None:
         checks_clients_df.columns = checks_clients_df.columns.str.strip()
@@ -207,7 +263,9 @@ def load_all_data(files) -> AppData:
             ],
         )
     client_segments_df = (
-        _read_excel(files.client_segments) if files.client_segments else None
+        _read_excel(files.client_segments, label="Сегменты покупателей")
+        if files.client_segments
+        else None
     )
     if client_segments_df is not None:
         client_segments_df.columns = client_segments_df.columns.str.strip()
