@@ -49,6 +49,9 @@ from ui.upload_panel import UploadedFiles, render_upload_panel
 
 st.set_page_config(page_title="B2C РНП", page_icon="📊", layout="wide")
 
+SHOP_ECONOMY_SALES_COL_WIDTH_PX = 84
+SHOP_ECONOMY_SHOP_COL_WIDTH_PX = 190
+
 
 def main():
     st.title("B2C")
@@ -564,7 +567,7 @@ def _render_shop_economy_and_lfl(
         return
 
     st.divider()
-    col_shop, col_lfl, col_hookah = st.columns([1, 1.2, 0.95])
+    col_shop, col_lfl, col_hookah = st.columns([0.72, 1.38, 0.9])
 
     with col_shop:
         st.markdown("**Экономика магазинов**")
@@ -573,7 +576,21 @@ def _render_shop_economy_and_lfl(
                 sales_df, data.shops_order
             )
             if not shop_table.empty:
-                st.dataframe(shop_table, use_container_width=True)
+                st.dataframe(
+                    shop_table.reset_index(),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Магазин": st.column_config.TextColumn(
+                            "Магазин",
+                            width=SHOP_ECONOMY_SHOP_COL_WIDTH_PX,
+                        ),
+                        "Продажи с НДС": st.column_config.TextColumn(
+                            "Продажи с НДС",
+                            width=SHOP_ECONOMY_SALES_COL_WIDTH_PX,
+                        ),
+                    },
+                )
             else:
                 st.info("Нет данных по магазинам.")
         else:
