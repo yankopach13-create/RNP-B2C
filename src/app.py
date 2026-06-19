@@ -45,19 +45,8 @@ from ui.data_session import (
 )
 from ui.reference_quick_add import render_quick_reference_update
 from ui.upload_panel import UploadedFiles, render_upload_panel
-from data.references import get_sheets_connection_message
 
 st.set_page_config(page_title="B2C РНП", page_icon="📊", layout="wide")
-
-
-def _render_sheets_status() -> None:
-    level, msg = get_sheets_connection_message()
-    if level == "ok":
-        st.caption(msg)
-    elif level == "error":
-        st.error(msg)
-    else:
-        st.warning(msg)
 
 
 def main():
@@ -67,7 +56,6 @@ def main():
         'target="_blank" rel="noopener noreferrer">База данных</a>',
         unsafe_allow_html=True,
     )
-    _render_sheets_status()
 
     files: UploadedFiles = render_upload_panel()
     if not files.run_analysis:

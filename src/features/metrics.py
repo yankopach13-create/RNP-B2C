@@ -686,16 +686,19 @@ def _build_shop_economy_table(
         return pd.DataFrame(columns=["Продажи с НДС"])
 
     shop_sales = df.groupby("Магазин")["Продажи с НДС"].sum()
+    shop_sales.index = shop_sales.index.astype(str).str.strip()
+    shop_sales = shop_sales[shop_sales.index != ""]
+
     if shop_sales.empty and not resolve_shops_order(shops_order):
         return pd.DataFrame(columns=["Продажи с НДС"])
 
     display_order = resolve_shops_order(shops_order)
-    shops_in_data = set(shop_sales.index.astype(str).str.strip())
+    shops_in_data = set(shop_sales.index)
     ordered_shops = ordered_shop_labels(shops_in_data | set(display_order), shops_order)
 
     rows = []
     for shop in ordered_shops:
-        value = shop_sales[shop] if shop in shop_sales.index else None
+        value = shop_sales.get(shop)
         rows.append({
             "Магазин": shop,
             "Продажи с НДС": _fmt_number(value),
