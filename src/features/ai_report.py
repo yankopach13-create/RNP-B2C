@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from features.client_segments import compute_segment_revenue
-from features.clients import COL_CUMULATIVE, COL_METRIC
+from features.clients import COL_METRIC
 from features.general_rnp import (
     COL_REPORT_WEEK_PREFIX,
     _apply_sheets_number_format,
@@ -44,8 +44,6 @@ _AI_AVG_CHECK_METRICS = frozenset(
     }
 )
 
-_METRIC_CUMULATIVE_ONLY = "Клиенты с бонусной картой"
-
 
 def render_ai_report_b2c(
     sales_df: pd.DataFrame | None,
@@ -55,7 +53,7 @@ def render_ai_report_b2c(
     report_week: int | None = None,
     excise_liquid_report_qty: float = 0.0,
 ) -> None:
-    """Таблица метрик ИИ отчёта: Метрика / Накопительно / Отчётная неделя."""
+    """Таблица метрик ИИ отчёта: Метрика / Отчётная неделя."""
     report_week = _resolve_report_week(sales_df, checks_clients_df, report_week)
     week_col = (
         f"{COL_REPORT_WEEK_PREFIX} ({report_week})"
@@ -77,7 +75,6 @@ def render_ai_report_b2c(
         hide_index=True,
         column_config={
             COL_METRIC: st.column_config.TextColumn(COL_METRIC, width=320),
-            COL_CUMULATIVE: st.column_config.TextColumn(COL_CUMULATIVE, width=120),
             week_col: st.column_config.TextColumn(week_col, width=140),
         },
     )
@@ -103,8 +100,7 @@ def build_ai_report_table(
     client_metrics = _load_client_metrics(
         checks_clients_df, client_segments_df, report_week
     )
-    df_cum, df_week = _split_sales_frames(sales_df, report_week)
-    totals_cum = _category_totals(df_cum) if _can_build_category_sales(df_cum) else None
+    _, df_week = _split_sales_frames(sales_df, report_week)
     totals_week = (
         _category_totals(df_week) if _can_build_category_sales(df_week) else None
     )
@@ -117,7 +113,6 @@ def build_ai_report_table(
         target_rev_week = _fmt_fin_int(target_rev)
         non_target_rev_week = _fmt_fin_int(non_target_rev)
 
-    rev_c, md_c, pct_c = _financial_values(df_cum)
     rev_w, md_w, pct_w = _financial_values(
         df_week, excise_liquid_report_qty=excise_liquid_report_qty
     )
@@ -125,55 +120,43 @@ def build_ai_report_table(
     rows: list[list[str]] = []
 
     def empty_row(label: str) -> None:
-        rows.append([label, "", ""])
+        rows.append([label, ""])
 
-    def client_row(label: str, cum_key: str | None, week_key: str | None) -> None:
-        cum = client_metrics.get(cum_key, "") if cum_key else ""
+    def client_row(label: str, week_key: str | None) -> None:
         wk = client_metrics.get(week_key, "") if week_key else ""
-        rows.append([label, cum, wk])
+        rows.append([label, wk])
 
     empty_row("Новые клиенты")
     empty_row("Вернувшиеся клиенты")
     empty_row("Потерянные клиенты")
     empty_row("Активная клиенсткая база")
-    client_row("Целевая клиентская база", "target_akb_cumulative", "target_akb_week")
-    client_row(
-        "Нецелевая клиентская база",
-        "non_target_akb_cumulative",
-        "non_target_akb_week",
-    )
-    client_row("Клиенты с бонусной картой", "clients_bk_cumulative", "clients_bk_week")
+    client_row("Целевая клиентская база", "target_akb_week")
+    client_row("Нецелевая клиентская база", "non_target_akb_week")
+    client_row("Клиенты с бонусной картой", "clients_bk_week")
     empty_row("CSI")
     empty_row("CLI возврат")
     empty_row("CLI рекомендация")
-    rows.append(["Продажи с НДС", rev_c, rev_w])
-    rows.append(["Маржа", md_c, md_w])
-    rows.append(["% Маржи", pct_c, pct_w])
-    rows.append(["Продажи с НДС Целевых клиентов", "", target_rev_week])
-    rows.append(["Продажи с НДС Нецелевых клиентов", "", non_target_rev_week])
-    client_row("Кол-во чеков общее", None, "total_checks")
-    client_row("Кол-во чеков с бонусной картой", None, "checks_with_bk")
-    client_row("Кол-во чеков без бонусной карты", None, "checks_without_bk")
-    client_row("Средний чек всех клиентов", None, "sch")
-    client_row("средний чек клиентов  с бонусной картой", None, "sch_bk")
-    client_row("средний чек клиентов без бонусной карты", None, "sch_no_bk")
-    client_row("Начислено бонусов", None, "credited")
-    client_row("Списано бонусов", None, "spent")
+    rows.append(["Продажи с НДС", rev_w])
+    rows.append(["Маржа", md_w])
+    rows.append(["% Маржи", pct_w])
+    rows.append(["Продажи с НДС Целевых клиентов", target_rev_week])
+    rows.append(["Продажи с НДС Нецелевых клиентов", non_target_rev_week])
+    client_row("Кол-во чеков общее", "total_checks")
+    client_row("Кол-во чеков с бонусной картой", "checks_with_bk")
+    client_row("Кол-во чеков без бонусной карты", "checks_without_bk")
+    client_row("Средний чек всех клиентов", "sch")
+    client_row("средний чек клиентов  с бонусной картой", "sch_bk")
+    client_row("средний чек клиентов без бонусной карты", "sch_no_bk")
+    client_row("Начислено бонусов", "credited")
+    client_row("Списано бонусов", "spent")
 
     for label, rnp_cat in _AI_CATEGORY_MAP:
-        rows.append(
-            [
-                label,
-                _category_qty(totals_cum, rnp_cat),
-                _category_qty(totals_week, rnp_cat),
-            ]
-        )
+        rows.append([label, _category_qty(totals_week, rnp_cat)])
 
-    table = pd.DataFrame(rows, columns=[COL_METRIC, COL_CUMULATIVE, week_col])
-    table = _cumulative_only_clients_bk(table)
+    table = pd.DataFrame(rows, columns=[COL_METRIC, week_col])
     return _apply_sheets_number_format(
         table,
-        (COL_CUMULATIVE, week_col),
+        (week_col,),
         avg_check_metrics=_AI_AVG_CHECK_METRICS,
     )
 
@@ -184,13 +167,3 @@ def _category_qty(totals: pd.Series | None, category: str) -> str:
     if category not in totals.index:
         return _fmt_int(0)
     return _fmt_int(float(totals[category]))
-
-
-def _cumulative_only_clients_bk(df: pd.DataFrame) -> pd.DataFrame:
-    """В «Накопительно» оставляем значение только у «Клиенты с бонусной картой»."""
-    out = df.copy()
-    if COL_CUMULATIVE not in out.columns or COL_METRIC not in out.columns:
-        return out
-    keep = out[COL_METRIC].astype(str).str.strip() == _METRIC_CUMULATIVE_ONLY
-    out.loc[~keep, COL_CUMULATIVE] = ""
-    return out
