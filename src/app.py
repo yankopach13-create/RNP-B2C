@@ -17,6 +17,7 @@ import pandas as pd
 import streamlit as st
 
 from data.loaders import AppData
+from data.references import is_sheets_quota_error
 from features.data_prep import (
     default_lfl_and_report_weeks,
     sales_week_numbers,
@@ -73,10 +74,17 @@ def main():
             st.error(str(exc))
             st.stop()
         except Exception as exc:
-            st.error(
-                "Ошибка при чтении загруженных файлов. "
-                "Проверьте, что все файлы — корректные .xlsx из Qlik (без форматирования)."
-            )
+            if is_sheets_quota_error(exc):
+                st.error(
+                    "Превышена квота Google Sheets API при загрузке справочников "
+                    "(магазины, категории, порядок групп). Загруженные .xlsx из Qlik "
+                    "здесь ни при чём — подождите 1–2 минуты и нажмите «Запустить анализ» снова."
+                )
+            else:
+                st.error(
+                    "Ошибка при чтении загруженных файлов. "
+                    "Проверьте, что все файлы — корректные .xlsx из Qlik (без форматирования)."
+                )
             st.caption(str(exc))
             st.stop()
     else:

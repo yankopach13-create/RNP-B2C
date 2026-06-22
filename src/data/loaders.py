@@ -154,26 +154,19 @@ def _resolve_shops_order_column(order_df: pd.DataFrame) -> str | None:
     return None
 
 
-def _load_groups_order_rnp() -> Optional[list[str]]:
-    """Порядок и список групп РНП для отчёта и формы новых магазинов."""
+def _load_groups_order_data() -> tuple[Optional[list[str]], Optional[list[str]]]:
+    """Порядок групп РНП и магазинов — один запрос к справочнику groups_order."""
     order_df = _safe_load_reference(_references().REF_GROUPS_ORDER)
     if order_df is None:
-        return None
+        return None, None
     order_df.columns = order_df.columns.str.strip()
-    col = _resolve_groups_order_column(order_df)
-    return _column_names_from_reference(order_df, col)
-
-
-def _load_shops_order() -> Optional[list[str]]:
-    """Порядок магазинов для блока «Экономика магазинов»."""
-    order_df = _safe_load_reference(_references().REF_GROUPS_ORDER)
-    if order_df is None:
-        return None
-    order_df.columns = order_df.columns.str.strip()
-    col = _resolve_shops_order_column(order_df)
-    if col is None:
-        return None
-    return _column_names_from_reference(order_df, col)
+    groups_col = _resolve_groups_order_column(order_df)
+    groups_order = _column_names_from_reference(order_df, groups_col)
+    shops_col = _resolve_shops_order_column(order_df)
+    shops_order = (
+        _column_names_from_reference(order_df, shops_col) if shops_col else None
+    )
+    return groups_order, shops_order
 
 
 def _load_category_order() -> tuple[Optional[list[str]], Optional[list[str]]]:
@@ -213,8 +206,7 @@ def load_all_data(files) -> AppData:
     focus_df = _load_focus_reference()
     if focus_df is not None:
         focus_df.columns = focus_df.columns.str.strip()
-    groups_order_rnp = _load_groups_order_rnp()
-    shops_order = _load_shops_order()
+    groups_order_rnp, shops_order = _load_groups_order_data()
     category_order_rnp, category_order_general = _load_category_order()
 
     lfl_df = None

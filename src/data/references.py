@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import os
+import time
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+_T = TypeVar("_T")
+_SHEETS_CACHE_TTL_SEC = 600
+_SHEETS_RETRY_ATTEMPTS = 5
+_SHEETS_RETRY_BASE_DELAY_SEC = 2.0
 
 from config.constants import REFERENCE_DIR, REFERENCE_GROUPS_FILENAMES
 
@@ -231,6 +237,63 @@ def _get_gspread_client():
     return client
 
 
+@st.cache_resource
+def _open_spreadsheet(spreadsheet_id: str):
+    client = _get_gspread_client()
+    return _sheets_api_with_retry(lambda: client.open_by_key(spreadsheet_id))
+
+
+def is_sheets_quota_error(exc: BaseException) -> bool:
+    """True для 429 / Quota exceeded Google Sheets API."""
+    message = str(exc)
+    if "429" in message or "Quota exceeded" in message:
+        return True
+    if "sheets.googleapis.com" in message and "quota" in message.lower():
+        return True
+    try:
+        from gspread.exceptions import APIError
+
+        if isinstance(exc, APIError):
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status == 429:
+                return True
+    except ImportError:
+        pass
+    return False
+
+
+def _is_retryable_sheets_error(exc: BaseException) -> bool:
+    if is_sheets_quota_error(exc):
+        return True
+    message = str(exc).lower()
+    return "503" in message or "service unavailable" in message
+
+
+def _sheets_api_with_retry(action: Callable[[], _T]) -> _T:
+    last_error: BaseException | None = None
+    for attempt in range(_SHEETS_RETRY_ATTEMPTS):
+        try:
+            return action()
+        except Exception as exc:  # noqa: BLE001
+            if not _is_retryable_sheets_error(exc) or attempt >= _SHEETS_RETRY_ATTEMPTS - 1:
+                raise
+            last_error = exc
+            time.sleep(_SHEETS_RETRY_BASE_DELAY_SEC * (2**attempt))
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Не удалось выполнить запрос к Google Sheets.")
+
+
+def _worksheet_to_dataframe(worksheet) -> pd.DataFrame:
+    rows = _sheets_api_with_retry(worksheet.get_all_values)
+    if not rows:
+        return pd.DataFrame()
+    header = [str(cell).strip() for cell in rows[0]]
+    if len(rows) == 1:
+        return pd.DataFrame(columns=header)
+    return pd.DataFrame(rows[1:], columns=header)
+
+
 def _cell_value(value: Any) -> Any:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
@@ -253,30 +316,33 @@ def _dataframe_to_sheet_values(df: pd.DataFrame) -> list[list[Any]]:
     return values
 
 
-@st.cache_data(ttl=120, show_spinner=False)
-def _load_from_sheets(spreadsheet_id: str, worksheet_name: str) -> pd.DataFrame:
-    client = _get_gspread_client()
-    worksheet = client.open_by_key(spreadsheet_id).worksheet(worksheet_name)
-    records = worksheet.get_all_records()
-    if records:
-        return pd.DataFrame(records)
-    rows = worksheet.get_all_values()
-    if rows:
-        return pd.DataFrame(columns=rows[0])
-    return pd.DataFrame()
+@st.cache_data(ttl=_SHEETS_CACHE_TTL_SEC, show_spinner=False)
+def _load_all_references_from_sheets(spreadsheet_id: str) -> dict[str, pd.DataFrame]:
+    """Один open таблицы и пакетная загрузка листов — меньше read-запросов к API."""
+    spreadsheet = _open_spreadsheet(spreadsheet_id)
+    loaded: dict[str, pd.DataFrame] = {}
+    for key in _REFERENCE_META:
+        worksheet_name = _sheet_name(key)
+        worksheet = _sheets_api_with_retry(lambda name=worksheet_name: spreadsheet.worksheet(name))
+        loaded[key] = _worksheet_to_dataframe(worksheet)
+    return loaded
 
 
 def _save_to_sheets(spreadsheet_id: str, worksheet_name: str, df: pd.DataFrame) -> None:
-    client = _get_gspread_client()
-    worksheet = client.open_by_key(spreadsheet_id).worksheet(worksheet_name)
-    worksheet.clear()
-    if df.empty and list(df.columns):
-        worksheet.update([list(df.columns)], value_input_option="USER_ENTERED")
-        return
-    if df.empty:
-        return
-    values = _dataframe_to_sheet_values(df)
-    worksheet.update(values, value_input_option="USER_ENTERED")
+    spreadsheet = _open_spreadsheet(spreadsheet_id)
+    worksheet = _sheets_api_with_retry(lambda: spreadsheet.worksheet(worksheet_name))
+
+    def _write() -> None:
+        worksheet.clear()
+        if df.empty and list(df.columns):
+            worksheet.update([list(df.columns)], value_input_option="USER_ENTERED")
+            return
+        if df.empty:
+            return
+        values = _dataframe_to_sheet_values(df)
+        worksheet.update(values, value_input_option="USER_ENTERED")
+
+    _sheets_api_with_retry(_write)
 
 
 def load_reference(key: str) -> pd.DataFrame:
@@ -287,7 +353,8 @@ def load_reference(key: str) -> pd.DataFrame:
     if sheets_configured():
         refs = _references_config()
         spreadsheet_id = str(refs["spreadsheet_id"]).strip()
-        return _load_from_sheets(spreadsheet_id, _sheet_name(key)).copy()
+        batch = _load_all_references_from_sheets(spreadsheet_id)
+        return batch[key].copy()
 
     if _is_streamlit_cloud():
         raise FileNotFoundError(
@@ -329,4 +396,4 @@ def save_reference(key: str, df: pd.DataFrame) -> None:
 
 
 def clear_reference_cache() -> None:
-    _load_from_sheets.clear()
+    _load_all_references_from_sheets.clear()
