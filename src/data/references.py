@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -360,6 +361,103 @@ def _dataframe_to_sheet_values(df: pd.DataFrame) -> list[list[Any]]:
     return values
 
 
+@dataclass(frozen=True)
+class _SheetWritePlan:
+    """План записи одного листа: диапазон update и опциональная очистка хвоста."""
+
+    range_name: str
+    values: list[list[Any]]
+    n_rows: int
+    tail_clear_range: str | None = None
+
+
+def _sheet_write_plan(
+    worksheet_name: str,
+    df: pd.DataFrame,
+    *,
+    old_row_count: int = 0,
+    old_col_count: int = 0,
+) -> _SheetWritePlan | None:
+    """Формирует диапазоны для values_batch_update и batchClear."""
+    if df.empty and not list(df.columns):
+        return None
+    if df.empty and list(df.columns):
+        values: list[list[Any]] = [list(df.columns)]
+    else:
+        values = _dataframe_to_sheet_values(df)
+
+    n_rows = len(values)
+    n_cols = len(values[0]) if values else 0
+    if n_cols == 0:
+        return None
+
+    end_col = _column_letter(n_cols)
+    range_name = _sheet_range_name(worksheet_name, f"A1:{end_col}{n_rows}")
+    tail_clear_range = None
+    if old_row_count > n_rows:
+        tail_end_col = _column_letter(max(n_cols, old_col_count))
+        tail_clear_range = _sheet_range_name(
+            worksheet_name,
+            f"A{n_rows + 1}:{tail_end_col}{old_row_count}",
+        )
+    return _SheetWritePlan(
+        range_name=range_name,
+        values=values,
+        n_rows=n_rows,
+        tail_clear_range=tail_clear_range,
+    )
+
+
+def build_sheets_batch_write_body(
+    plans: list[_SheetWritePlan],
+) -> dict[str, Any]:
+    """Тело запроса values_batch_update для нескольких листов."""
+    data = [{"range": p.range_name, "values": p.values} for p in plans]
+    return {"valueInputOption": "USER_ENTERED", "data": data}
+
+
+def _save_many_to_sheets(spreadsheet_id: str, updates: dict[str, pd.DataFrame]) -> None:
+    """Запись нескольких листов одним values_batch_update (+ batchClear хвостов)."""
+    spreadsheet = _open_spreadsheet(spreadsheet_id)
+    plans: list[_SheetWritePlan] = []
+    verify: list[tuple[Any, int]] = []
+
+    for key, df in updates.items():
+        ws_name = _sheet_name(key)
+        worksheet = _sheets_api_with_retry(
+            lambda name=ws_name: spreadsheet.worksheet(name)
+        )
+        plan = _sheet_write_plan(
+            ws_name,
+            df,
+            old_row_count=worksheet.row_count,
+            old_col_count=worksheet.col_count,
+        )
+        if plan is None:
+            continue
+        plans.append(plan)
+        verify.append((worksheet, plan.n_rows))
+
+    if not plans:
+        return
+
+    def _batch_write() -> None:
+        spreadsheet.values_batch_update(body=build_sheets_batch_write_body(plans))
+
+    _sheets_api_with_retry(_batch_write)
+
+    tail_ranges = [p.tail_clear_range for p in plans if p.tail_clear_range]
+    if tail_ranges:
+
+        def _batch_clear() -> None:
+            spreadsheet.values_batch_clear(body={"ranges": tail_ranges})
+
+        _sheets_api_with_retry(_batch_clear)
+
+    for worksheet, n_rows in verify:
+        _verify_sheet_row_count(worksheet, n_rows)
+
+
 def _load_references_via_batch_get(spreadsheet) -> dict[str, pd.DataFrame]:
     """Все листы одним values_batch_get."""
     keys_and_names = [(key, _sheet_name(key)) for key in _REFERENCE_META]
@@ -404,32 +502,23 @@ def _save_to_sheets(spreadsheet_id: str, worksheet_name: str, df: pd.DataFrame) 
     """Запись без предварительного clear — сначала update, затем обрезка хвоста."""
     spreadsheet = _open_spreadsheet(spreadsheet_id)
     worksheet = _sheets_api_with_retry(lambda: spreadsheet.worksheet(worksheet_name))
+    plan = _sheet_write_plan(
+        worksheet_name,
+        df,
+        old_row_count=worksheet.row_count,
+        old_col_count=worksheet.col_count,
+    )
+    if plan is None:
+        return
+
+    cell_range = plan.range_name.split("!", 1)[-1]
 
     def _write() -> None:
-        if df.empty and not list(df.columns):
-            return
-        if df.empty and list(df.columns):
-            values: list[list[Any]] = [list(df.columns)]
-        else:
-            values = _dataframe_to_sheet_values(df)
-
-        n_rows = len(values)
-        n_cols = len(values[0]) if values else 0
-        if n_cols == 0:
-            return
-
-        end_col = _column_letter(n_cols)
-        range_name = f"A1:{end_col}{n_rows}"
-        worksheet.update(range_name, values, value_input_option="USER_ENTERED")
-
-        old_row_count = worksheet.row_count
-        old_col_count = worksheet.col_count
-        if old_row_count > n_rows:
-            tail_end_col = _column_letter(max(n_cols, old_col_count))
-            tail_range = f"A{n_rows + 1}:{tail_end_col}{old_row_count}"
-            worksheet.batch_clear([tail_range])
-
-        _verify_sheet_row_count(worksheet, n_rows)
+        worksheet.update(cell_range, plan.values, value_input_option="USER_ENTERED")
+        if plan.tail_clear_range:
+            tail_cell = plan.tail_clear_range.split("!", 1)[-1]
+            worksheet.batch_clear([tail_cell])
+        _verify_sheet_row_count(worksheet, plan.n_rows)
 
     _sheets_api_with_retry(_write)
 
@@ -527,6 +616,16 @@ def load_reference(key: str) -> pd.DataFrame:
     return pd.read_excel(local_path)
 
 
+def _save_reference_local(key: str, df: pd.DataFrame) -> None:
+    local_path = _local_path(key)
+    if local_path is None:
+        local_names = _REFERENCE_META[key]["local"]
+        first = local_names[0] if isinstance(local_names, tuple) else local_names
+        local_path = REFERENCE_DIR / first
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_excel(local_path, index=False)
+
+
 def _save_reference_impl(key: str, df: pd.DataFrame) -> None:
     if sheets_configured():
         refs = _references_config()
@@ -538,13 +637,7 @@ def _save_reference_impl(key: str, df: pd.DataFrame) -> None:
             f"{_secrets_setup_hint()}"
         )
     else:
-        local_path = _local_path(key)
-        if local_path is None:
-            local_names = _REFERENCE_META[key]["local"]
-            first = local_names[0] if isinstance(local_names, tuple) else local_names
-            local_path = REFERENCE_DIR / first
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_excel(local_path, index=False)
+        _save_reference_local(key, df)
 
 
 def save_reference(key: str, df: pd.DataFrame, *, invalidate_cache: bool = True) -> None:
@@ -562,11 +655,22 @@ def save_references_batch(updates: dict[str, pd.DataFrame]) -> None:
     for key in updates:
         if key not in _REFERENCE_META:
             raise ValueError(f"Неизвестный справочник: {key}")
+
     saved: list[str] = []
     try:
-        for key, df in updates.items():
-            _save_reference_impl(key, df)
-            saved.append(key)
+        if sheets_configured():
+            refs = _references_config()
+            spreadsheet_id = str(refs["spreadsheet_id"]).strip()
+            _save_many_to_sheets(spreadsheet_id, updates)
+        else:
+            for key, df in updates.items():
+                if _is_streamlit_cloud():
+                    raise RuntimeError(
+                        f"Нельзя сохранить справочник «{get_reference_title(key)}» без Google Sheets. "
+                        f"{_secrets_setup_hint()}"
+                    )
+                _save_reference_local(key, df)
+                saved.append(key)
     except Exception as exc:  # noqa: BLE001
         clear_reference_cache()
         if saved:
