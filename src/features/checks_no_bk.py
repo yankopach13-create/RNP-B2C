@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import re
 
 import pandas as pd
@@ -43,12 +44,21 @@ _NAME_COL_WIDTH_PX = 210
 _VALUE_COL_WIDTH_PX = 90
 
 _XLSX_TYPES = ["xlsx", "xls"]
-_SESSION_FILE_KEY = "checks_no_bk_uploaded_file"
+_SESSION_BYTES_KEY = "checks_no_bk_uploaded_bytes"
+_SESSION_NAME_KEY = "checks_no_bk_uploaded_name"
+
+
+def _reference_column_series(df: pd.DataFrame, column: str) -> pd.Series:
+    """Столбец справочника; при дублях заголовков берётся первый."""
+    selected = df.loc[:, column]
+    if isinstance(selected, pd.DataFrame):
+        return selected.iloc[:, 0]
+    return selected
 
 
 def _column_names_from_reference(df: pd.DataFrame, column: str) -> list[str]:
     names: list[str] = []
-    for val in df[column]:
+    for val in _reference_column_series(df, column):
         if pd.isna(val):
             continue
         name = str(val).strip()
@@ -58,7 +68,9 @@ def _column_names_from_reference(df: pd.DataFrame, column: str) -> list[str]:
 
 
 def _normalize_label(value: object) -> str:
-    text = str(value or "").replace("\xa0", " ")
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    text = str(value).replace("\xa0", " ")
     return re.sub(r"\s+", " ", text).strip().casefold()
 
 
@@ -126,15 +138,17 @@ def _pct_for_rows(rows: pd.DataFrame) -> str:
 
 
 def _build_shop_group_map(groups_df: pd.DataFrame | None) -> dict[str, str]:
-    if groups_df is None or groups_df.empty:
+    if groups_df is None or not isinstance(groups_df, pd.DataFrame) or groups_df.empty:
         return {}
-    if COL_SHOP not in groups_df.columns or "Группа" not in groups_df.columns:
+    df = groups_df.copy()
+    df.columns = df.columns.astype(str).str.strip()
+    if COL_SHOP not in df.columns or "Группа" not in df.columns:
         return {}
     mapping: dict[str, str] = {}
-    for _, row in groups_df.iterrows():
+    for _, row in df.iterrows():
         shop = str(row[COL_SHOP]).strip()
         group = str(row["Группа"]).strip()
-        if shop and group:
+        if shop and group and shop.lower() not in ("nan", "none"):
             mapping[_normalize_shop_key(shop)] = group
     return mapping
 
@@ -166,13 +180,12 @@ def _compute_seller_pcts(upload_df: pd.DataFrame) -> dict[str, str]:
     if prepared is None:
         return {}
 
+    prepared = prepared.copy()
+    prepared["_key"] = prepared[COL_UPLOAD_CASHIER].map(_normalize_label)
+    prepared = prepared.loc[prepared["_key"].ne("")]
+
     out: dict[str, str] = {}
-    for cashier, group in prepared.groupby(
-        prepared[COL_UPLOAD_CASHIER].map(_normalize_label),
-        dropna=False,
-    ):
-        if not cashier:
-            continue
+    for cashier, group in prepared.groupby("_key", sort=False):
         out[str(cashier)] = _pct_for_rows(group)
     return out
 
@@ -182,13 +195,12 @@ def _compute_shop_pcts(upload_df: pd.DataFrame) -> dict[str, str]:
     if prepared is None:
         return {}
 
+    prepared = prepared.copy()
+    prepared["_key"] = prepared[COL_UPLOAD_SHOP].map(_normalize_shop_key)
+    prepared = prepared.loc[prepared["_key"].ne("")]
+
     out: dict[str, str] = {}
-    for shop_key, group in prepared.groupby(
-        prepared[COL_UPLOAD_SHOP].map(_normalize_shop_key),
-        dropna=False,
-    ):
-        if not shop_key:
-            continue
+    for shop_key, group in prepared.groupby("_key", sort=False):
         out[str(shop_key)] = _pct_for_rows(group)
     return out
 
@@ -215,9 +227,7 @@ def _compute_group_pcts(
     prepared = prepared.loc[prepared["_group"].ne("")]
 
     out: dict[str, str] = {}
-    for group_key, group in prepared.groupby("_group", dropna=False):
-        if not group_key:
-            continue
+    for group_key, group in prepared.groupby("_group", sort=False):
         out[str(group_key)] = _pct_for_rows(group)
     return out
 
@@ -278,11 +288,11 @@ def _load_pct_no_bk_reference() -> pd.DataFrame | None:
         return None
 
 
-def _read_checks_no_bk_upload(file: object) -> pd.DataFrame | None:
-    if file is None:
+def _read_checks_no_bk_bytes(content: bytes, *, label: str) -> pd.DataFrame | None:
+    if not content:
         return None
     try:
-        return _read_excel(file, label="Файл % без БК")
+        return _read_excel(io.BytesIO(content), label=label)
     except ValueError as exc:
         st.error(str(exc))
         return None
@@ -293,6 +303,14 @@ def _render_order_table(
     *,
     name_column: str,
 ) -> None:
+    if table.empty:
+        st.dataframe(
+            table,
+            use_container_width=True,
+            hide_index=True,
+        )
+        return
+
     st.dataframe(
         table,
         use_container_width=True,
@@ -316,6 +334,17 @@ def render_checks_no_bk_block(
     groups_df: pd.DataFrame | None = None,
 ) -> None:
     """Загрузчик Excel и три таблицы (продавцы, магазины, группы)."""
+    try:
+        _render_checks_no_bk_block_impl(groups_df=groups_df)
+    except Exception as exc:  # noqa: BLE001
+        st.error("Ошибка в блоке «% чеков без БК».")
+        st.exception(exc)
+
+
+def _render_checks_no_bk_block_impl(
+    *,
+    groups_df: pd.DataFrame | None = None,
+) -> None:
     st.markdown("---")
 
     uploaded = st.file_uploader(
@@ -328,15 +357,25 @@ def render_checks_no_bk_block(
         ),
     )
     if uploaded is not None:
-        st.session_state[_SESSION_FILE_KEY] = uploaded
+        st.session_state[_SESSION_BYTES_KEY] = uploaded.getvalue()
+        st.session_state[_SESSION_NAME_KEY] = uploaded.name
 
-    upload_file = uploaded or st.session_state.get(_SESSION_FILE_KEY)
+    upload_bytes: bytes | None = None
+    upload_name = "файл"
+    if uploaded is not None:
+        upload_bytes = uploaded.getvalue()
+        upload_name = uploaded.name
+    elif _SESSION_BYTES_KEY in st.session_state:
+        raw_bytes = st.session_state.get(_SESSION_BYTES_KEY)
+        if isinstance(raw_bytes, (bytes, bytearray)) and raw_bytes:
+            upload_bytes = bytes(raw_bytes)
+            upload_name = str(st.session_state.get(_SESSION_NAME_KEY, "файл"))
+
     upload_df: pd.DataFrame | None = None
-    if upload_file is not None:
-        upload_df = _read_checks_no_bk_upload(upload_file)
+    if upload_bytes:
+        upload_df = _read_checks_no_bk_bytes(upload_bytes, label="Файл % без БК")
         if upload_df is not None and not upload_df.empty:
-            name = getattr(upload_file, "name", "файл")
-            st.caption(f"Файл загружен: {name} ({len(upload_df)} строк).")
+            st.caption(f"Файл загружен: {upload_name} ({len(upload_df)} строк).")
         elif upload_df is not None and upload_df.empty:
             st.warning("Загруженный файл не содержит данных.")
             upload_df = None
@@ -368,7 +407,7 @@ def render_checks_no_bk_block(
             st.error(str(exc))
             upload_df = None
 
-    if upload_df is not None and groups_df is None:
+    if upload_df is not None and _build_shop_group_map(groups_df) == {}:
         st.info(
             "Справочник магазинов недоступен — таблица групп не будет рассчитана."
         )

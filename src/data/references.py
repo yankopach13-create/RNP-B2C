@@ -610,6 +610,13 @@ def load_reference(key: str) -> pd.DataFrame:
         refs = _references_config()
         spreadsheet_id = str(refs["spreadsheet_id"]).strip()
         batch = _load_all_references_from_sheets(spreadsheet_id)
+        if key not in batch:
+            _load_all_references_from_sheets.clear()
+            batch = _load_all_references_from_sheets(spreadsheet_id)
+        if key not in batch:
+            raise FileNotFoundError(
+                f"Справочник «{get_reference_title(key)}» не найден: {get_reference_label(key)}"
+            )
         return batch[key].copy()
 
     if _is_streamlit_cloud():
