@@ -597,7 +597,7 @@ def _render_shop_economy_and_lfl(
 ) -> None:
     """Экономика магазинов, факторный анализ и кальянная продукция."""
     hookah_kwargs = {
-        "sales_df": sales_df,
+        "sales_df": data.sales,
         "focus_hookah": data.focus_hookah,
         "groups_df": data.groups,
         "report_week": report_week,

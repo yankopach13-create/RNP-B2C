@@ -20,7 +20,6 @@ COL_CHECKS = "количество чеков"
 COL_PRODUCT_QTY = "количество товара"
 COL_SALES_U2 = "Товар ур.2"
 COL_SALES_QTY = "Количество"
-COL_SALES_SUM = "Продажи с НДС"
 
 _HOOKAH_METRIC_ROWS: tuple[str | None, ...] = (
     "1.1 Бестабачная Смесь",
@@ -62,16 +61,30 @@ _SALES_CATEGORY_BY_METRIC: dict[str, str] = {
     "1.5 Табачная Смесь": "Табачная Смесь",
 }
 
+# Допустимые варианты написания в «Товар ур.2» (без учёта регистра).
+_SALES_CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
+    "Бестабачная Смесь": ("бестабачная смесь", "бкс", "бестабачные смеси"),
+    "Уголь для кальяна": ("уголь для кальяна",),
+    "Аксессуары для Кальяна": ("аксессуары для кальяна",),
+    "Кальяны": ("кальяны",),
+    "Табачная Смесь": ("табачная смесь", "табачные смеси"),
+}
+
 _HOOKAH_GROUP_ROWS: tuple[str, ...] = _HOOKAH_METRIC_ROWS[-12:]  # type: ignore[assignment]
 
 _GROUP_LABEL_TO_REF: dict[str, str] = {
     "Витебская область": "Витебск",
 }
 
-_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+_HOOKAH_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_SHOP: (COL_SHOP, "магазин"),
     COL_CHECKS: (COL_CHECKS, "Количество чеков"),
     COL_PRODUCT_QTY: (COL_PRODUCT_QTY, "Количество товара"),
+}
+
+_SALES_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    COL_SALES_U2: (COL_SALES_U2, "Товар Ур.2", "товар ур.2", "Товар2", "Товар 2"),
+    COL_SALES_QTY: (COL_SALES_QTY, "количество", "Кол-во", "Кол-во, шт"),
 }
 
 
@@ -143,11 +156,13 @@ def _compute_hookah_metrics(
 
     sales_week = _prepare_sales_for_hookah(sales_df, report_week)
     for metric, category in _SALES_CATEGORY_BY_METRIC.items():
-        out[metric] = _sales_category_value(sales_week, category)
+        out[metric] = _sales_category_qty(sales_week, category)
+
+    if focus_hookah is not None and not focus_hookah.empty:
+        out["Кол-во чеков всей категории"] = _category_checks_total(focus_hookah)
 
     hookah_shops = _prepare_hookah_shops(focus_hookah)
     if hookah_shops is not None:
-        out["Кол-во чеков всей категории"] = _category_checks_total(focus_hookah)
         shop_group_map = _build_shop_group_map(groups_df)
         for group_label in _HOOKAH_GROUP_ROWS:
             ref_group = _GROUP_LABEL_TO_REF.get(group_label, group_label)
@@ -164,35 +179,36 @@ def _prepare_sales_for_hookah(
 ) -> pd.DataFrame | None:
     if sales_df is None or sales_df.empty:
         return None
-    df = sales_df.copy()
-    df.columns = df.columns.str.strip()
+    try:
+        df = _resolve_columns(sales_df, _SALES_COLUMN_ALIASES)
+    except ValueError:
+        return None
     if report_week is not None:
         df = filter_sales_by_report_week(df, report_week)
     return df
 
 
-def _sales_category_value(sales_df: pd.DataFrame | None, category: str) -> str:
+def _sales_category_qty(sales_df: pd.DataFrame | None, category: str) -> str:
     if sales_df is None or sales_df.empty:
         return ""
     if COL_SALES_U2 not in sales_df.columns:
         return ""
-    target = _normalize_label(category)
-    mask = sales_df[COL_SALES_U2].map(_normalize_label).eq(target)
+    aliases = _SALES_CATEGORY_ALIASES.get(category, (_normalize_label(category),))
+    alias_set = {_normalize_label(name) for name in aliases}
+    u2 = sales_df[COL_SALES_U2].map(_normalize_label)
+    mask = u2.isin(alias_set)
     subset = sales_df.loc[mask]
     if subset.empty:
         return ""
     qty = float(subset[COL_SALES_QTY].sum()) if COL_SALES_QTY in subset.columns else 0.0
-    amount = (
-        float(subset[COL_SALES_SUM].sum()) if COL_SALES_SUM in subset.columns else 0.0
-    )
-    return f"{_fmt_int(qty)} / {_fmt_int(amount)}"
+    return _fmt_int(qty)
 
 
 def _prepare_hookah_shops(raw: pd.DataFrame | None) -> pd.DataFrame | None:
     if raw is None or raw.empty:
         return None
     try:
-        df = _resolve_hookah_columns(raw)
+        df = _resolve_columns(raw, _HOOKAH_COLUMN_ALIASES)
     except ValueError:
         return None
 
@@ -209,18 +225,15 @@ def _prepare_hookah_shops(raw: pd.DataFrame | None) -> pd.DataFrame | None:
     return shops
 
 
-def _category_checks_total(raw: pd.DataFrame | None) -> str:
-    if raw is None or raw.empty:
-        return ""
+def _category_checks_total(raw: pd.DataFrame) -> str:
+    """Кол-во чеков всей категории — вторая строка загруженного файла (после заголовка)."""
     try:
-        df = _resolve_hookah_columns(raw)
+        df = _resolve_columns(raw, _HOOKAH_COLUMN_ALIASES)
     except ValueError:
         return ""
-
-    totals = df.loc[df[COL_SHOP].map(_is_totals_row)]
-    if len(totals) < 2:
+    if df.empty:
         return ""
-    value = pd.to_numeric(totals.iloc[1][COL_CHECKS], errors="coerce")
+    value = pd.to_numeric(df.iloc[0][COL_CHECKS], errors="coerce")
     if pd.isna(value):
         return ""
     return _fmt_int(value)
@@ -245,18 +258,23 @@ def _group_nesting(
     return _fmt_decimal(total_qty / total_checks, 3)
 
 
-def _resolve_hookah_columns(raw: pd.DataFrame) -> pd.DataFrame:
+def _resolve_columns(
+    raw: pd.DataFrame,
+    aliases: dict[str, tuple[str, ...]],
+) -> pd.DataFrame:
     df = raw.copy()
-    df.columns = df.columns.str.strip()
-    resolved: dict[str, str] = {}
+    df.columns = df.columns.astype(str).str.strip()
     lower_map = {str(c).strip().casefold(): c for c in df.columns}
-    for canonical, aliases in _COLUMN_ALIASES.items():
+    resolved: dict[str, str] = {}
+    for canonical, names in aliases.items():
         found = None
-        for alias in aliases:
+        for alias in names:
             key = alias.casefold()
             if key in lower_map:
                 found = lower_map[key]
                 break
+        if found is None and canonical == COL_SALES_U2:
+            found = _find_product_level2_column(df.columns)
         if found is None:
             raise ValueError(f"Отсутствует столбец «{canonical}»")
         resolved[canonical] = found
@@ -265,6 +283,14 @@ def _resolve_hookah_columns(raw: pd.DataFrame) -> pd.DataFrame:
     if rename:
         df = df.rename(columns=rename)
     return df
+
+
+def _find_product_level2_column(columns) -> str | None:
+    for col in columns:
+        name = str(col).strip().casefold()
+        if "товар" in name and "2" in name:
+            return str(col).strip()
+    return None
 
 
 def _build_shop_group_map(groups_df: pd.DataFrame | None) -> dict[str, str]:
