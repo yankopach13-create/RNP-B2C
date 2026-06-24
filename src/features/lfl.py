@@ -43,6 +43,8 @@ def render_lfl_block(
     excise_liquid_lfl_qty: float = 0.0,
     excise_liquid_report_qty: float = 0.0,
     embedded: bool = False,
+    prebuilt_table: pd.DataFrame | None = None,
+    table_height: int | None = None,
 ):
     if not embedded:
         st.markdown("---")
@@ -50,15 +52,17 @@ def render_lfl_block(
     else:
         st.markdown("**Факторный анализ**")
 
-    table = build_lfl_factor_table(
-        lfl_df,
-        categories_df,
-        lfl_week,
-        report_week,
-        category_order_rnp,
-        excise_liquid_lfl_qty=excise_liquid_lfl_qty,
-        excise_liquid_report_qty=excise_liquid_report_qty,
-    )
+    table = prebuilt_table
+    if table is None:
+        table = build_lfl_factor_table(
+            lfl_df,
+            categories_df,
+            lfl_week,
+            report_week,
+            category_order_rnp,
+            excise_liquid_lfl_qty=excise_liquid_lfl_qty,
+            excise_liquid_report_qty=excise_liquid_report_qty,
+        )
     if table is None:
         if lfl_df is None:
             st.info(
@@ -78,7 +82,7 @@ def render_lfl_block(
         table,
         use_container_width=True,
         hide_index=True,
-        height=_full_table_height(len(table)),
+        height=table_height or _full_table_height(len(table)),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config=_lfl_column_config(table),
     )

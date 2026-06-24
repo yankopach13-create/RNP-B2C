@@ -207,7 +207,7 @@ def test_fill_free_products_table() -> None:
         }
     )
     groups = pd.DataFrame({"Магазин": ["Shop A", "Shop B"], "Группа": ["Восток", "Юг"]})
-    table, warnings = build_fill_free_table(fill_free, groups, 11, ["Восток", "Юг"])
+    table, warnings = build_fill_free_table(fill_free, groups, 11)
     _assert(not warnings, "no warnings")
     _assert(table is not None, "table built")
     week_col = "Неделя 11"

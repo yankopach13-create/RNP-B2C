@@ -23,7 +23,7 @@ from features.data_prep import (
     sales_week_numbers,
 )
 from features.clients import render_client_block
-from features.lfl import render_lfl_block
+from features.lfl import build_lfl_factor_table, render_lfl_block
 from features.fill_free_products import render_fill_free_products_block
 from features.hookah_products import render_hookah_products_block
 from features.metrics import (
@@ -644,7 +644,6 @@ def _render_shop_economy_and_lfl(
     fill_free_kwargs = {
         "focus_fill_free": data.focus_fill_free,
         "groups_df": data.groups,
-        "groups_order_rnp": data.groups_order_rnp,
         "report_week": report_week,
         "embedded": True,
     }
@@ -662,6 +661,23 @@ def _render_shop_economy_and_lfl(
     st.divider()
     col_left, col_lfl = st.columns([1.28, 1.82])
 
+    lfl_table = None
+    if has_lfl:
+        lfl_table = build_lfl_factor_table(
+            data.lfl,
+            data.categories,
+            lfl_week,
+            report_week,
+            data.category_order_rnp,
+            excise_liquid_lfl_qty=excise_lfl_qty,
+            excise_liquid_report_qty=excise_report_qty,
+        )
+    paired_table_height = (
+        _full_table_height(len(lfl_table))
+        if lfl_table is not None and not lfl_table.empty
+        else None
+    )
+
     with col_left:
         st.markdown("**Экономика магазинов**")
         if has_shop:
@@ -669,11 +685,14 @@ def _render_shop_economy_and_lfl(
                 sales_df, data.shops_order
             )
             if not shop_table.empty:
+                shop_table_height = paired_table_height or _full_table_height(
+                    len(shop_table)
+                )
                 st.dataframe(
                     shop_table.reset_index(),
                     use_container_width=True,
                     hide_index=True,
-                    height=_full_table_height(len(shop_table)),
+                    height=shop_table_height,
                     row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
                     column_config={
                         "Магазин": st.column_config.TextColumn(
@@ -708,6 +727,8 @@ def _render_shop_economy_and_lfl(
                 excise_liquid_lfl_qty=excise_lfl_qty,
                 excise_liquid_report_qty=excise_report_qty,
                 embedded=True,
+                prebuilt_table=lfl_table,
+                table_height=paired_table_height,
             )
         else:
             st.markdown("**Факторный анализ**")

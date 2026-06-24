@@ -8,8 +8,15 @@ import pandas as pd
 import streamlit as st
 
 from features.clients import _has_client_code
-from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX, _full_table_height
-from features.reference_orders import resolve_groups_order
+from features.hookah_products import (
+    FOCUS_TABLE_VISIBLE_ROWS,
+    HOOKAH_GROUP_LABELS,
+    HOOKAH_GROUP_LABEL_TO_REF,
+)
+from features.metrics import (
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    _financial_dataframe_height,
+)
 
 COL_GROUP = "Группа"
 COL_CUMULATIVE = "Накопительно"
@@ -21,8 +28,8 @@ COL_CLIENT = "Код клиента"
 
 ROW_B2C = "Весь B2C"
 
-FILL_FREE_GROUP_COL_WIDTH_PX = 168
-FILL_FREE_VALUE_COL_WIDTH_PX = 92
+FILL_FREE_GROUP_COL_WIDTH_PX = 250
+FILL_FREE_VALUE_COL_WIDTH_PX = 95
 
 _FILL_FREE_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_YEAR_WEEK: (COL_YEAR_WEEK, "год-неделя", "Год неделя"),
@@ -45,9 +52,8 @@ def build_fill_free_table(
     focus_fill_free: pd.DataFrame | None = None,
     groups_df: pd.DataFrame | None = None,
     report_week: int | None = None,
-    groups_order_rnp: list[str] | None = None,
 ) -> tuple[pd.DataFrame | None, list[str]]:
-    """Таблица уникальных клиентов: B2C и группы."""
+    """Таблица уникальных клиентов: B2C и группы (как в кальянной продукции)."""
     prepared, warnings = _prepare_fill_free(focus_fill_free)
     if prepared is None or prepared.empty:
         return None, warnings
@@ -70,15 +76,16 @@ def build_fill_free_table(
     rows: list[dict[str, str]] = [
         _fill_free_row(ROW_B2C, prepared, week_df, week_label),
     ]
-    for group in resolve_groups_order(groups_order_rnp):
-        group_key = _normalize_label(group)
+    for group_label in HOOKAH_GROUP_LABELS:
+        ref_group = HOOKAH_GROUP_LABEL_TO_REF.get(group_label, group_label)
+        group_key = _normalize_label(ref_group)
         group_all = prepared.loc[
             prepared["_group"].map(_normalize_label) == group_key
         ]
         group_week = week_df.loc[
             week_df["_group"].map(_normalize_label) == group_key
         ]
-        rows.append(_fill_free_row(group, group_all, group_week, week_label))
+        rows.append(_fill_free_row(group_label, group_all, group_week, week_label))
 
     return pd.DataFrame(rows, columns=[COL_GROUP, COL_CUMULATIVE, week_label]), warnings
 
@@ -88,7 +95,6 @@ def render_fill_free_products_block(
     focus_fill_free: pd.DataFrame | None = None,
     groups_df: pd.DataFrame | None = None,
     report_week: int | None = None,
-    groups_order_rnp: list[str] | None = None,
     embedded: bool = False,
 ) -> None:
     """Уникальные клиенты по B2C и группам магазинов."""
@@ -102,7 +108,6 @@ def render_fill_free_products_block(
         focus_fill_free,
         groups_df,
         report_week,
-        groups_order_rnp,
     )
     for message in warnings:
         st.warning(message)
@@ -116,7 +121,7 @@ def render_fill_free_products_block(
         table,
         use_container_width=True,
         hide_index=True,
-        height=_full_table_height(len(table)),
+        height=_financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config={
             COL_GROUP: st.column_config.TextColumn(

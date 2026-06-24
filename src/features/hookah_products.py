@@ -8,12 +8,17 @@ import pandas as pd
 import streamlit as st
 
 from features.data_prep import filter_sales_by_report_week
+from features.metrics import (
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    _financial_dataframe_height,
+)
 
 COL_METRIC = "Метрика"
 COL_VALUE = "Значение"
+FOCUS_TABLE_VISIBLE_ROWS = 10
 HOOKAH_TABLE_ROW_HEIGHT_PX = 35
-HOOKAH_METRIC_COL_WIDTH_PX = 210
-HOOKAH_VALUE_COL_WIDTH_PX = 68
+HOOKAH_METRIC_COL_WIDTH_PX = 250
+HOOKAH_VALUE_COL_WIDTH_PX = 95
 
 COL_SHOP = "Магазин"
 COL_CHECKS = "количество чеков"
@@ -64,9 +69,12 @@ _HOOKAH_METRIC_ROWS: tuple[str | None, ...] = (
 
 _HOOKAH_GROUP_ROWS: tuple[str, ...] = _HOOKAH_METRIC_ROWS[-12:]  # type: ignore[assignment]
 
-_GROUP_LABEL_TO_REF: dict[str, str] = {
+HOOKAH_GROUP_LABELS: tuple[str, ...] = _HOOKAH_GROUP_ROWS
+HOOKAH_GROUP_LABEL_TO_REF: dict[str, str] = {
     "Витебская область": "Витебск",
 }
+
+_GROUP_LABEL_TO_REF: dict[str, str] = HOOKAH_GROUP_LABEL_TO_REF
 
 _HOOKAH_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_SHOP: (COL_SHOP, "магазин"),
@@ -128,7 +136,8 @@ def render_hookah_products_block(
         table,
         use_container_width=True,
         hide_index=True,
-        row_height=HOOKAH_TABLE_ROW_HEIGHT_PX,
+        height=_financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS),
+        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config={
             COL_METRIC: st.column_config.TextColumn(
                 COL_METRIC, width=HOOKAH_METRIC_COL_WIDTH_PX
