@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import pandas as pd
@@ -14,12 +15,16 @@ from config.constants import (
     GROUPS_ORDER_COLUMN_CANDIDATES,
     GROUPS_ORDER_COLUMN_SHOPS,
     GROUPS_ORDER_COLUMN_SHOPS_CANDIDATES,
+    PCT_NO_BK_COLUMN_GROUPS,
+    PCT_NO_BK_COLUMN_SELLERS,
+    PCT_NO_BK_COLUMN_SHOPS,
     SHOP_GROUP_COLUMN_GENERAL,
 )
 from data.references import (
     REF_CATEGORIES,
     REF_CATEGORY_ORDER,
     REF_GROUPS_ORDER,
+    REF_PCT_NO_BK,
     REF_SHOP_GROUPS,
     ReferencesBatchSaveError,
     append_reference_rows,
@@ -611,6 +616,78 @@ def append_shop_to_groups_order(shop_name: str) -> tuple[bool, str]:
     if not ok:
         return False, err or "Ошибка записи порядка магазинов."
     return True, "Магазин добавлен в конец списка «Порядок магазинов»."
+
+
+def _seller_key_for_match(name: object) -> str:
+    text = str(name or "").strip().casefold().replace(".", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _mutate_pct_no_bk_append_seller(
+    df: pd.DataFrame,
+    seller_name: str,
+) -> tuple[pd.DataFrame, bool, str | None]:
+    """Возвращает (df, was_added, error). was_added=False если продавец уже в списке."""
+    seller_name = str(seller_name).strip()
+    if not seller_name:
+        return df, False, "Пустое имя продавца."
+
+    df = df.copy()
+    df.columns = df.columns.str.strip()
+    for col in (
+        PCT_NO_BK_COLUMN_SELLERS,
+        PCT_NO_BK_COLUMN_SHOPS,
+        PCT_NO_BK_COLUMN_GROUPS,
+    ):
+        if col not in df.columns:
+            df[col] = ""
+
+    sellers_col = PCT_NO_BK_COLUMN_SELLERS
+    existing = {
+        _seller_key_for_match(v)
+        for v in df[sellers_col].dropna()
+        if str(v).strip()
+    }
+    if _seller_key_for_match(seller_name) in existing:
+        return df, False, None
+
+    row: dict[str, str] = {c: "" for c in df.columns}
+    row[sellers_col] = seller_name
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    return df, True, None
+
+
+def append_seller_to_pct_no_bk(seller_name: str) -> tuple[bool, str]:
+    """Добавляет продавца в конец столбца «Порядок продавцов» листа %_bk."""
+    seller_name = str(seller_name).strip()
+    if not seller_name:
+        return False, "Пустое имя продавца."
+
+    default_cols = [
+        PCT_NO_BK_COLUMN_SELLERS,
+        PCT_NO_BK_COLUMN_SHOPS,
+        PCT_NO_BK_COLUMN_GROUPS,
+    ]
+    if reference_exists(REF_PCT_NO_BK):
+        df, err = _try_load_reference(REF_PCT_NO_BK)
+        if err:
+            return False, err
+    else:
+        df = pd.DataFrame(columns=default_cols)
+
+    df, was_added, mut_err = _mutate_pct_no_bk_append_seller(df, seller_name)
+    if mut_err:
+        return False, mut_err
+    if not was_added:
+        return True, "Продавец уже есть в справочнике."
+
+    try:
+        append_reference_rows(REF_PCT_NO_BK, df.tail(1))
+    except Exception as exc:  # noqa: BLE001
+        return False, (
+            f"Не удалось записать в {get_reference_storage_hint(REF_PCT_NO_BK)}: {exc}"
+        )
+    return True, f"Продавец «{seller_name}» добавлен в конец списка."
 
 
 def category_triple_keys_set(category_df: pd.DataFrame) -> set[str]:

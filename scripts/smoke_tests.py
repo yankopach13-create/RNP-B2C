@@ -31,9 +31,11 @@ from features.checks_no_bk import (  # noqa: E402
     build_groups_no_bk_table,
     build_sellers_no_bk_table,
     build_shops_no_bk_table,
+    collect_new_sellers,
 )
 from features.reference_update import (  # noqa: E402
     _mutate_categories_add_product,
+    _mutate_pct_no_bk_append_seller,
     _mutate_shop_groups,
     category_triple_keys_set,
 )
@@ -215,6 +217,36 @@ def test_mutate_categories_add_product() -> None:
     _assert(not added2 and err2 is not None, "duplicate blocked")
 
 
+def test_checks_no_bk_new_sellers() -> None:
+    ref = pd.DataFrame(
+        {
+            "Порядок продавцов": ["Иванов"],
+            "Порядок магазинов": [""],
+            "Порядок групп": [""],
+        }
+    )
+    upload = pd.DataFrame(
+        {
+            "Магазин": ["S1", ""],
+            "Кассир": ["Иванов", "Новиков А.А."],
+            "количество чеков": [1, 2],
+            "Код клиента": ["", ""],
+        }
+    )
+    new = collect_new_sellers(upload, ref)
+    _assert(new == ["Новиков А.А."], f"new sellers {new}")
+
+    df, added, err = _mutate_pct_no_bk_append_seller(ref, "Новиков А.А.")
+    _assert(err is None and added, "seller appended")
+    _assert(
+        str(df["Порядок продавцов"].iloc[-1]) == "Новиков А.А.",
+        "seller at end",
+    )
+    df2, added2, _ = _mutate_pct_no_bk_append_seller(df, "Новиков А.А.")
+    _assert(not added2, "duplicate blocked")
+    _assert(len(df2) == len(df), "no extra row on duplicate")
+
+
 def test_checks_no_bk_pcts() -> None:
     ref = pd.DataFrame(
         {
@@ -263,6 +295,7 @@ OFFLINE_TESTS = [
     test_hookah_products_table,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,
+    test_checks_no_bk_new_sellers,
     test_checks_no_bk_pcts,
 ]
 

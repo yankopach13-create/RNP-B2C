@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import io
 import re
 
@@ -14,8 +15,15 @@ from config.constants import (
     PCT_NO_BK_COLUMN_SHOPS,
 )
 from data.loaders import _read_excel
-from data.references import REF_PCT_NO_BK, get_reference_label, load_reference
+from data.references import (
+    REF_PCT_NO_BK,
+    get_reference_label,
+    get_sheets_connection_message,
+    load_reference,
+    sheets_configured,
+)
 from features.clients import _has_client_code
+from features.reference_update import append_seller_to_pct_no_bk
 
 COL_PCT_NO_BK = "% без БК"
 COL_SELLER = "Продавец"
@@ -29,7 +37,14 @@ COL_UPLOAD_CLIENT = "Код клиента"
 
 _UPLOAD_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_UPLOAD_SHOP: (COL_UPLOAD_SHOP, "магазин"),
-    COL_UPLOAD_CASHIER: (COL_UPLOAD_CASHIER, "кассир", "Продавец", "продавец"),
+    COL_UPLOAD_CASHIER: (
+        COL_UPLOAD_CASHIER,
+        "кассир",
+        "Кассир (продавец)",
+        "кассир (продавец)",
+        "Продавец",
+        "продавец",
+    ),
     COL_UPLOAD_CHECKS: (
         COL_UPLOAD_CHECKS,
         "Количество чеков",
@@ -45,7 +60,83 @@ _VALUE_COL_WIDTH_PX = 90
 
 _XLSX_TYPES = ["xlsx", "xls"]
 _SESSION_BYTES_KEY = "checks_no_bk_uploaded_bytes"
-_SESSION_NAME_KEY = "checks_no_bk_uploaded_name"
+
+_NEW_SELLER_ROW_COL_WIDTHS = [2.4, 1]
+
+
+def _key_part(value: str) -> str:
+    return re.sub(r"[^\w]+", "_", str(value)[:48], flags=re.UNICODE).strip("_") or "x"
+
+
+def collect_new_sellers(
+    upload_df: pd.DataFrame,
+    reference_df: pd.DataFrame | None,
+) -> list[str]:
+    """Кассиры из файла, которых нет в столбце «Порядок продавцов» справочника %_bk."""
+    prepared = _prepare_upload_for_sellers(upload_df)
+    if prepared is None:
+        return []
+
+    ref_keys: set[str] = set()
+    if reference_df is not None and not reference_df.empty:
+        ref_df = reference_df.copy()
+        ref_df.columns = ref_df.columns.astype(str).str.strip()
+        if PCT_NO_BK_COLUMN_SELLERS in ref_df.columns:
+            for name in _column_names_from_reference(
+                ref_df,
+                PCT_NO_BK_COLUMN_SELLERS,
+            ):
+                ref_keys.add(_normalize_seller_key(name))
+
+    new_sellers: list[str] = []
+    seen: set[str] = set()
+    for key, group in prepared.groupby("_seller_key", sort=False):
+        if not key or key in ref_keys or key in seen:
+            continue
+        seen.add(key)
+        new_sellers.append(_canonical_seller_label(group[COL_UPLOAD_CASHIER]))
+
+    return sorted(new_sellers, key=lambda x: x.casefold())
+
+
+def _render_new_sellers_panel(new_sellers: list[str]) -> None:
+    if not new_sellers:
+        return
+
+    if not sheets_configured():
+        level, msg = get_sheets_connection_message()
+        if level == "error":
+            st.error(msg)
+        else:
+            st.warning(msg)
+
+    st.markdown(
+        '<div style="color:#8b949e;font-size:0.72rem;font-weight:600;margin:0 0 8px 0;">'
+        "Новые продавцы</div>",
+        unsafe_allow_html=True,
+    )
+    with st.container(border=True):
+        for index, seller in enumerate(new_sellers):
+            col_name, col_btn = st.columns(_NEW_SELLER_ROW_COL_WIDTHS)
+            key_suffix = f"{index}_{_key_part(seller)}"
+            with col_name:
+                st.markdown(
+                    '<div style="color:#b1bac4;font-size:0.9rem;line-height:2.4rem;">'
+                    f"{html.escape(seller)}</div>",
+                    unsafe_allow_html=True,
+                )
+            with col_btn:
+                if st.button(
+                    "Добавить",
+                    key=f"checks_no_bk_add_seller_{key_suffix}",
+                    use_container_width=True,
+                ):
+                    ok, message = append_seller_to_pct_no_bk(seller)
+                    if ok:
+                        st.success(message)
+                    else:
+                        st.error(message)
+                    st.rerun()
 
 
 def _reference_column_series(df: pd.DataFrame, column: str) -> pd.Series:
@@ -72,6 +163,22 @@ def _normalize_label(value: object) -> str:
         return ""
     text = str(value).replace("\xa0", " ")
     return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def _normalize_seller_key(value: object) -> str:
+    text = _normalize_label(value)
+    if not text:
+        return ""
+    text = re.sub(r"[.\u00b7]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _canonical_seller_label(series: pd.Series) -> str:
+    for value in series:
+        label = str(value).strip()
+        if label and label.lower() not in ("nan", "none"):
+            return label
+    return ""
 
 
 def _normalize_shop_key(value: object) -> str:
@@ -106,13 +213,30 @@ def _resolve_upload_columns(raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _prepare_upload_df(raw: pd.DataFrame | None) -> pd.DataFrame | None:
+def _prepare_upload_for_sellers(raw: pd.DataFrame | None) -> pd.DataFrame | None:
+    """Строки с кассиром — без отсечения по пустому магазину (для списка продавцов)."""
     if raw is None or raw.empty:
         return None
     df = _resolve_upload_columns(raw)
     df[COL_UPLOAD_CHECKS] = pd.to_numeric(df[COL_UPLOAD_CHECKS], errors="coerce").fillna(0)
     df[COL_UPLOAD_SHOP] = df[COL_UPLOAD_SHOP].astype(str).str.strip()
     df[COL_UPLOAD_CASHIER] = df[COL_UPLOAD_CASHIER].astype(str).str.strip()
+    df = df.loc[
+        df[COL_UPLOAD_CASHIER].ne("")
+        & ~df[COL_UPLOAD_CASHIER].str.casefold().str.contains("итог", na=False)
+    ]
+    if df.empty:
+        return None
+    df = df.copy()
+    df["_seller_key"] = df[COL_UPLOAD_CASHIER].map(_normalize_seller_key)
+    df = df.loc[df["_seller_key"].ne("")]
+    return df if not df.empty else None
+
+
+def _prepare_upload_df(raw: pd.DataFrame | None) -> pd.DataFrame | None:
+    df = _prepare_upload_for_sellers(raw)
+    if df is None:
+        return None
     df = df.loc[
         df[COL_UPLOAD_SHOP].ne("")
         & ~df[COL_UPLOAD_SHOP].str.casefold().str.contains("итог", na=False)
@@ -171,22 +295,20 @@ def _build_pct_table(
     if not names:
         return pd.DataFrame(columns=[name_column, COL_PCT_NO_BK])
 
-    values = [pct_by_name.get(_normalize_label(name), "") for name in names]
+    values = [pct_by_name.get(_normalize_seller_key(name), "") for name in names]
     return pd.DataFrame({name_column: names, COL_PCT_NO_BK: values})
 
 
 def _compute_seller_pcts(upload_df: pd.DataFrame) -> dict[str, str]:
-    prepared = _prepare_upload_df(upload_df)
+    prepared = _prepare_upload_for_sellers(upload_df)
     if prepared is None:
         return {}
 
-    prepared = prepared.copy()
-    prepared["_key"] = prepared[COL_UPLOAD_CASHIER].map(_normalize_label)
-    prepared = prepared.loc[prepared["_key"].ne("")]
-
     out: dict[str, str] = {}
-    for cashier, group in prepared.groupby("_key", sort=False):
-        out[str(cashier)] = _pct_for_rows(group)
+    for seller_key, group in prepared.groupby("_seller_key", sort=False):
+        if not seller_key:
+            continue
+        out[str(seller_key)] = _pct_for_rows(group)
     return out
 
 
@@ -298,6 +420,21 @@ def _read_checks_no_bk_bytes(content: bytes, *, label: str) -> pd.DataFrame | No
         return None
 
 
+def _inject_checks_no_bk_upload_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"],
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileSize"],
+        div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] ~ div {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_order_table(
     table: pd.DataFrame,
     *,
@@ -346,6 +483,7 @@ def _render_checks_no_bk_block_impl(
     groups_df: pd.DataFrame | None = None,
 ) -> None:
     st.markdown("---")
+    _inject_checks_no_bk_upload_styles()
 
     uploaded = st.file_uploader(
         "Файл % без БК",
@@ -358,25 +496,19 @@ def _render_checks_no_bk_block_impl(
     )
     if uploaded is not None:
         st.session_state[_SESSION_BYTES_KEY] = uploaded.getvalue()
-        st.session_state[_SESSION_NAME_KEY] = uploaded.name
 
     upload_bytes: bytes | None = None
-    upload_name = "файл"
     if uploaded is not None:
         upload_bytes = uploaded.getvalue()
-        upload_name = uploaded.name
     elif _SESSION_BYTES_KEY in st.session_state:
         raw_bytes = st.session_state.get(_SESSION_BYTES_KEY)
         if isinstance(raw_bytes, (bytes, bytearray)) and raw_bytes:
             upload_bytes = bytes(raw_bytes)
-            upload_name = str(st.session_state.get(_SESSION_NAME_KEY, "файл"))
 
     upload_df: pd.DataFrame | None = None
     if upload_bytes:
         upload_df = _read_checks_no_bk_bytes(upload_bytes, label="Файл % без БК")
-        if upload_df is not None and not upload_df.empty:
-            st.caption(f"Файл загружен: {upload_name} ({len(upload_df)} строк).")
-        elif upload_df is not None and upload_df.empty:
+        if upload_df is not None and upload_df.empty:
             st.warning("Загруженный файл не содержит данных.")
             upload_df = None
 
@@ -402,7 +534,7 @@ def _render_checks_no_bk_block_impl(
 
     if upload_df is not None:
         try:
-            _prepare_upload_df(upload_df)
+            _prepare_upload_for_sellers(upload_df)
         except ValueError as exc:
             st.error(str(exc))
             upload_df = None
@@ -411,6 +543,11 @@ def _render_checks_no_bk_block_impl(
         st.info(
             "Справочник магазинов недоступен — таблица групп не будет рассчитана."
         )
+
+    new_sellers = (
+        collect_new_sellers(upload_df, reference_df) if upload_df is not None else []
+    )
+    _render_new_sellers_panel(new_sellers)
 
     col_sellers, col_shops, col_groups = st.columns([1, 1, 1])
 
