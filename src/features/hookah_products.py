@@ -18,8 +18,17 @@ HOOKAH_VALUE_COL_WIDTH_PX = 68
 COL_SHOP = "Магазин"
 COL_CHECKS = "количество чеков"
 COL_PRODUCT_QTY = "количество товара"
-COL_SALES_U2 = "Товар ур.2"
 COL_SALES_QTY = "Количество"
+# 2-й столбец файла «Продажи» (индекс 1) — названия «1.1 …», «1.2 …» и т.д.
+SALES_CATEGORY_COLUMN_INDEX = 1
+
+_HOOKAH_SALES_METRICS: tuple[str, ...] = (
+    "1.1 Бестабачная Смесь",
+    "1.2 Уголь для кальяна",
+    "1.3 Аксессуары для Кальяна",
+    "1.4 Кальяны",
+    "1.5 Табачная Смесь",
+)
 
 _HOOKAH_METRIC_ROWS: tuple[str | None, ...] = (
     "1.1 Бестабачная Смесь",
@@ -52,15 +61,6 @@ _HOOKAH_METRIC_ROWS: tuple[str | None, ...] = (
     "Брест",
     "Гродно",
 )
-
-# Полное совпадение со значением «Товар ур.2» в продажах и справочнике.
-_SALES_CATEGORY_BY_METRIC: dict[str, str] = {
-    "1.1 Бестабачная Смесь": "Бестабачная Смесь",
-    "1.2 Уголь для кальяна": "Уголь для кальяна",
-    "1.3 Аксессуары для Кальяна": "Аксессуары для Кальяна",
-    "1.4 Кальяны": "Кальяны",
-    "1.5 Табачная Смесь": "Табачная Смесь",
-}
 
 _HOOKAH_GROUP_ROWS: tuple[str, ...] = _HOOKAH_METRIC_ROWS[-12:]  # type: ignore[assignment]
 
@@ -152,8 +152,8 @@ def _compute_hookah_metrics(
 
     sales_week, sales_warnings = _prepare_sales_for_hookah(sales_df, report_week)
     warnings.extend(sales_warnings)
-    for metric, category in _SALES_CATEGORY_BY_METRIC.items():
-        out[metric] = _sales_category_qty(sales_week, category)
+    for metric in _HOOKAH_SALES_METRICS:
+        out[metric] = _sales_category_qty(sales_week, metric)
 
     if focus_hookah is not None and not focus_hookah.empty:
         out["Кол-во чеков всей категории"] = _category_checks_total(focus_hookah)
@@ -180,11 +180,11 @@ def _prepare_sales_for_hookah(
     df = sales_df.copy()
     df.columns = df.columns.astype(str).str.strip()
 
-    missing = [col for col in (COL_SALES_U2, COL_SALES_QTY) if col not in df.columns]
-    if missing:
-        return None, [
-            "В продажах отсутствуют столбцы: " + ", ".join(f"«{c}»" for c in missing)
-        ]
+    if len(df.columns) < 2:
+        return None, ["В файле «Продажи» меньше двух столбцов."]
+
+    if COL_SALES_QTY not in df.columns:
+        return None, [f"В продажах отсутствует столбец «{COL_SALES_QTY}»."]
 
     if report_week is not None:
         df = filter_sales_by_report_week(df, report_week)
@@ -195,12 +195,12 @@ def _prepare_sales_for_hookah(
 
 
 def _sales_category_qty(sales_df: pd.DataFrame | None, category: str) -> str:
-    """Сумма «Количество» при полном совпадении «Товар ур.2» (после strip)."""
+    """Сумма «Количество» при полном совпадении во 2-м столбце файла продаж."""
     if sales_df is None or sales_df.empty:
         return ""
 
-    u2 = sales_df[COL_SALES_U2].map(_norm_cell)
-    mask = u2 == category
+    category_values = sales_df.iloc[:, SALES_CATEGORY_COLUMN_INDEX].map(_norm_cell)
+    mask = category_values == category
     subset = sales_df.loc[mask]
     if subset.empty:
         return ""

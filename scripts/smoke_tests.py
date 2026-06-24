@@ -137,12 +137,17 @@ def test_normalize_app_data_legacy() -> None:
 def test_hookah_sales_exact_match() -> None:
     sales = pd.DataFrame(
         {
-            "Товар ур.2": ["Бестабачная Смесь", "Бестабачная Смесь", "бестабачная смесь"],
+            "Магазин": ["A", "A", "A"],
+            "Товар ур.2": [
+                "1.1 Бестабачная Смесь",
+                "1.1 Бестабачная Смесь",
+                "1.1 бестабачная смесь",
+            ],
             "Количество": [10, 5, 99],
         }
     )
-    qty = _sales_category_qty_from_table(sales, "Бестабачная Смесь")
-    _assert(qty == "15", "exact match only, case sensitive")
+    qty = _sales_category_qty_from_table(sales, "1.1 Бестабачная Смесь")
+    _assert(qty == "15", "exact match in 2nd column, case sensitive")
 
 
 def _sales_category_qty_from_table(sales: pd.DataFrame, category: str) -> str:
@@ -155,9 +160,10 @@ def _sales_category_qty_from_table(sales: pd.DataFrame, category: str) -> str:
 def test_hookah_products_table() -> None:
     sales = pd.DataFrame(
         {
+            "Магазин": ["A", "A", "A"],
             "Товар ур.2": [
-                "Бестабачная Смесь",
-                "Уголь для кальяна",
+                "1.1 Бестабачная Смесь",
+                "1.2 Уголь для кальяна",
                 "Прочее",
             ],
             "Количество": [10, 5, 100],
