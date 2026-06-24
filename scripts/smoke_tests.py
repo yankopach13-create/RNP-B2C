@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
 import pandas as pd
 
 from config.constants import SHOP_GROUP_COLUMN_GENERAL  # noqa: E402
+from data.loaders import normalize_app_data  # noqa: E402
 from data.references import (  # noqa: E402
     _column_letter,
     _sheet_range_name,
@@ -121,6 +122,18 @@ def test_mutate_shop_groups() -> None:
     _assert(len(out) == 1, "one row")
 
 
+def test_normalize_app_data_legacy() -> None:
+  class LegacyAppData:
+    sales = groups = categories = checks_clients = client_segments = None
+    focus = lfl = turnover_week = turnover_90 = None
+    groups_order_rnp = category_order_rnp = category_order_general = shops_order = None
+
+  migrated = normalize_app_data(LegacyAppData())  # type: ignore[arg-type]
+  _assert(migrated is not None, "migrated")
+  _assert(migrated.focus_hookah is None, "focus_hookah default")
+  _assert(migrated.focus_fill_free is None, "focus_fill_free default")
+
+
 def test_hookah_products_table() -> None:
     sales = pd.DataFrame(
         {
@@ -180,6 +193,7 @@ OFFLINE_TESTS = [
     test_collect_new_shops,
     test_collect_unmatched_products,
     test_category_maps_cache,
+    test_normalize_app_data_legacy,
     test_hookah_products_table,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,

@@ -37,6 +37,33 @@ class AppData:
     category_order_general: Optional[list[str]]
     shops_order: Optional[list[str]]
 
+_APP_DATA_OPTIONAL_FIELDS = ("focus_hookah", "focus_fill_free")
+
+
+def normalize_app_data(data: AppData | None) -> AppData | None:
+    """Дополняет AppData из session_state полями, добавленными в новых версиях."""
+    if data is None:
+        return None
+    if all(hasattr(data, field) for field in _APP_DATA_OPTIONAL_FIELDS):
+        return data
+    return AppData(
+        sales=data.sales,
+        groups=data.groups,
+        categories=data.categories,
+        checks_clients=data.checks_clients,
+        client_segments=data.client_segments,
+        focus=data.focus,
+        lfl=data.lfl,
+        turnover_week=data.turnover_week,
+        turnover_90=data.turnover_90,
+        focus_hookah=getattr(data, "focus_hookah", None),
+        focus_fill_free=getattr(data, "focus_fill_free", None),
+        groups_order_rnp=data.groups_order_rnp,
+        category_order_rnp=data.category_order_rnp,
+        category_order_general=data.category_order_general,
+        shops_order=data.shops_order,
+    )
+
 def _excel_file_label(file: Any, fallback: str) -> str:
     name = getattr(file, "name", None)
     if name:

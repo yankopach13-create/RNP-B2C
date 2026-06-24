@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from data.loaders import AppData, load_all_data
+from data.loaders import AppData, load_all_data, normalize_app_data
 from features.data_prep import PreparedSalesResult, filter_sales_by_report_week, prepare_sales_dataset
 from features.excise_liquid import WeekCalculationConfig
 from features.excel_export import build_rnp_b2c_excel_bytes
@@ -38,7 +38,7 @@ def _clear_derived_caches() -> None:
 
 def load_and_store_app_data(files: UploadedFiles) -> tuple[AppData, PreparedSalesResult | None]:
     """Читает Excel и подготавливает продажи; сбрасывает производные кэши."""
-    data = load_all_data(files)
+    data = normalize_app_data(load_all_data(files))
     prepared = None
     if data.sales is not None and data.groups is not None:
         prepared = prepare_sales_dataset(data)
@@ -52,7 +52,10 @@ def load_and_store_app_data(files: UploadedFiles) -> tuple[AppData, PreparedSale
 
 
 def get_stored_app_data() -> AppData | None:
-    return st.session_state.get(APP_DATA_KEY)
+    data = normalize_app_data(st.session_state.get(APP_DATA_KEY))
+    if data is not None:
+        st.session_state[APP_DATA_KEY] = data
+    return data
 
 
 def get_stored_prepared() -> PreparedSalesResult | None:
