@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -12,11 +14,29 @@ from config.constants import (
 )
 from data.loaders import _read_excel
 from data.references import REF_PCT_NO_BK, get_reference_label, load_reference
+from features.clients import _has_client_code
 
 COL_PCT_NO_BK = "% без БК"
 COL_SELLER = "Продавец"
 COL_SHOP = "Магазин"
 COL_GROUP = "Группа"
+
+COL_UPLOAD_SHOP = "Магазин"
+COL_UPLOAD_CASHIER = "Кассир"
+COL_UPLOAD_CHECKS = "количество чеков"
+COL_UPLOAD_CLIENT = "Код клиента"
+
+_UPLOAD_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    COL_UPLOAD_SHOP: (COL_UPLOAD_SHOP, "магазин"),
+    COL_UPLOAD_CASHIER: (COL_UPLOAD_CASHIER, "кассир", "Продавец", "продавец"),
+    COL_UPLOAD_CHECKS: (
+        COL_UPLOAD_CHECKS,
+        "Количество чеков",
+        "количество чеков",
+        "количесвто чеков",
+    ),
+    COL_UPLOAD_CLIENT: (COL_UPLOAD_CLIENT, "код клиента"),
+}
 
 _TABLE_ROW_HEIGHT_PX = 35
 _NAME_COL_WIDTH_PX = 210
@@ -37,12 +57,94 @@ def _column_names_from_reference(df: pd.DataFrame, column: str) -> list[str]:
     return names
 
 
-def _build_order_table(
+def _normalize_label(value: object) -> str:
+    text = str(value or "").replace("\xa0", " ")
+    return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def _normalize_shop_key(value: object) -> str:
+    return _normalize_label(value)
+
+
+def _fmt_share_pct(no_bk_checks: float, total_checks: float) -> str:
+    if total_checks <= 0:
+        return ""
+    return f"{100 * no_bk_checks / total_checks:.1f}%".replace(".", ",")
+
+
+def _resolve_upload_columns(raw: pd.DataFrame) -> pd.DataFrame:
+    df = raw.copy()
+    df.columns = df.columns.astype(str).str.strip()
+    lower_map = {str(c).strip().casefold(): c for c in df.columns}
+    resolved: dict[str, str] = {}
+    for canonical, names in _UPLOAD_COLUMN_ALIASES.items():
+        found = None
+        for alias in names:
+            key = alias.casefold()
+            if key in lower_map:
+                found = lower_map[key]
+                break
+        if found is None:
+            raise ValueError(f"В файле отсутствует столбец «{canonical}».")
+        resolved[canonical] = found
+
+    rename = {src: dst for dst, src in resolved.items() if src != dst}
+    if rename:
+        df = df.rename(columns=rename)
+    return df
+
+
+def _prepare_upload_df(raw: pd.DataFrame | None) -> pd.DataFrame | None:
+    if raw is None or raw.empty:
+        return None
+    df = _resolve_upload_columns(raw)
+    df[COL_UPLOAD_CHECKS] = pd.to_numeric(df[COL_UPLOAD_CHECKS], errors="coerce").fillna(0)
+    df[COL_UPLOAD_SHOP] = df[COL_UPLOAD_SHOP].astype(str).str.strip()
+    df[COL_UPLOAD_CASHIER] = df[COL_UPLOAD_CASHIER].astype(str).str.strip()
+    df = df.loc[
+        df[COL_UPLOAD_SHOP].ne("")
+        & ~df[COL_UPLOAD_SHOP].str.casefold().str.contains("итог", na=False)
+    ]
+    if df.empty:
+        return None
+    return df
+
+
+def _checks_without_bk_sum(df: pd.DataFrame) -> float:
+    if df.empty:
+        return 0.0
+    mask = ~_has_client_code(df[COL_UPLOAD_CLIENT])
+    return float(df.loc[mask, COL_UPLOAD_CHECKS].sum())
+
+
+def _pct_for_rows(rows: pd.DataFrame) -> str:
+    total = float(rows[COL_UPLOAD_CHECKS].sum())
+    if total <= 0:
+        return ""
+    no_bk = _checks_without_bk_sum(rows)
+    return _fmt_share_pct(no_bk, total)
+
+
+def _build_shop_group_map(groups_df: pd.DataFrame | None) -> dict[str, str]:
+    if groups_df is None or groups_df.empty:
+        return {}
+    if COL_SHOP not in groups_df.columns or "Группа" not in groups_df.columns:
+        return {}
+    mapping: dict[str, str] = {}
+    for _, row in groups_df.iterrows():
+        shop = str(row[COL_SHOP]).strip()
+        group = str(row["Группа"]).strip()
+        if shop and group:
+            mapping[_normalize_shop_key(shop)] = group
+    return mapping
+
+
+def _build_pct_table(
     reference_df: pd.DataFrame | None,
     order_column: str,
     name_column: str,
+    pct_by_name: dict[str, str],
 ) -> pd.DataFrame:
-    """Таблица: список из справочника + пустой столбец «% без БК»."""
     if reference_df is None or reference_df.empty:
         return pd.DataFrame(columns=[name_column, COL_PCT_NO_BK])
 
@@ -55,27 +157,111 @@ def _build_order_table(
     if not names:
         return pd.DataFrame(columns=[name_column, COL_PCT_NO_BK])
 
-    return pd.DataFrame(
-        {name_column: names, COL_PCT_NO_BK: [""] * len(names)},
+    values = [pct_by_name.get(_normalize_label(name), "") for name in names]
+    return pd.DataFrame({name_column: names, COL_PCT_NO_BK: values})
+
+
+def _compute_seller_pcts(upload_df: pd.DataFrame) -> dict[str, str]:
+    prepared = _prepare_upload_df(upload_df)
+    if prepared is None:
+        return {}
+
+    out: dict[str, str] = {}
+    for cashier, group in prepared.groupby(
+        prepared[COL_UPLOAD_CASHIER].map(_normalize_label),
+        dropna=False,
+    ):
+        if not cashier:
+            continue
+        out[str(cashier)] = _pct_for_rows(group)
+    return out
+
+
+def _compute_shop_pcts(upload_df: pd.DataFrame) -> dict[str, str]:
+    prepared = _prepare_upload_df(upload_df)
+    if prepared is None:
+        return {}
+
+    out: dict[str, str] = {}
+    for shop_key, group in prepared.groupby(
+        prepared[COL_UPLOAD_SHOP].map(_normalize_shop_key),
+        dropna=False,
+    ):
+        if not shop_key:
+            continue
+        out[str(shop_key)] = _pct_for_rows(group)
+    return out
+
+
+def _compute_group_pcts(
+    upload_df: pd.DataFrame,
+    groups_df: pd.DataFrame | None,
+) -> dict[str, str]:
+    prepared = _prepare_upload_df(upload_df)
+    if prepared is None:
+        return {}
+
+    shop_group_map = _build_shop_group_map(groups_df)
+    if not shop_group_map:
+        return {}
+
+    prepared = prepared.copy()
+    prepared["_group"] = (
+        prepared[COL_UPLOAD_SHOP]
+        .map(_normalize_shop_key)
+        .map(shop_group_map)
+        .map(_normalize_label)
     )
+    prepared = prepared.loc[prepared["_group"].ne("")]
+
+    out: dict[str, str] = {}
+    for group_key, group in prepared.groupby("_group", dropna=False):
+        if not group_key:
+            continue
+        out[str(group_key)] = _pct_for_rows(group)
+    return out
 
 
 def build_sellers_no_bk_table(
     reference_df: pd.DataFrame | None = None,
+    upload_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    return _build_order_table(reference_df, PCT_NO_BK_COLUMN_SELLERS, COL_SELLER)
+    pct_by_name = _compute_seller_pcts(upload_df) if upload_df is not None else {}
+    return _build_pct_table(
+        reference_df,
+        PCT_NO_BK_COLUMN_SELLERS,
+        COL_SELLER,
+        pct_by_name,
+    )
 
 
 def build_shops_no_bk_table(
     reference_df: pd.DataFrame | None = None,
+    upload_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    return _build_order_table(reference_df, PCT_NO_BK_COLUMN_SHOPS, COL_SHOP)
+    pct_by_name = _compute_shop_pcts(upload_df) if upload_df is not None else {}
+    return _build_pct_table(
+        reference_df,
+        PCT_NO_BK_COLUMN_SHOPS,
+        COL_SHOP,
+        pct_by_name,
+    )
 
 
 def build_groups_no_bk_table(
     reference_df: pd.DataFrame | None = None,
+    upload_df: pd.DataFrame | None = None,
+    groups_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    return _build_order_table(reference_df, PCT_NO_BK_COLUMN_GROUPS, COL_GROUP)
+    pct_by_name = (
+        _compute_group_pcts(upload_df, groups_df) if upload_df is not None else {}
+    )
+    return _build_pct_table(
+        reference_df,
+        PCT_NO_BK_COLUMN_GROUPS,
+        COL_GROUP,
+        pct_by_name,
+    )
 
 
 def _load_pct_no_bk_reference() -> pd.DataFrame | None:
@@ -125,21 +311,35 @@ def _render_order_table(
     )
 
 
-def render_checks_no_bk_block() -> None:
-    """Загрузчик Excel и три таблицы (продавцы, магазины, группы) из справочника %_bk."""
+def render_checks_no_bk_block(
+    *,
+    groups_df: pd.DataFrame | None = None,
+) -> None:
+    """Загрузчик Excel и три таблицы (продавцы, магазины, группы)."""
     st.markdown("---")
 
     uploaded = st.file_uploader(
         "Файл % без БК",
         type=_XLSX_TYPES,
         key="checks_no_bk_uploader",
-        help="Загрузите отчёт из Qlik в формате Excel (.xlsx).",
+        help=(
+            "Столбцы: Магазин, Кассир, количество чеков, Код клиента. "
+            "Чек без БК — строка с пустым кодом клиента."
+        ),
     )
     if uploaded is not None:
         st.session_state[_SESSION_FILE_KEY] = uploaded
-        df = _read_checks_no_bk_upload(uploaded)
-        if df is not None and not df.empty:
-            st.caption(f"Файл загружен: {uploaded.name} ({len(df)} строк).")
+
+    upload_file = uploaded or st.session_state.get(_SESSION_FILE_KEY)
+    upload_df: pd.DataFrame | None = None
+    if upload_file is not None:
+        upload_df = _read_checks_no_bk_upload(upload_file)
+        if upload_df is not None and not upload_df.empty:
+            name = getattr(upload_file, "name", "файл")
+            st.caption(f"Файл загружен: {name} ({len(upload_df)} строк).")
+        elif upload_df is not None and upload_df.empty:
+            st.warning("Загруженный файл не содержит данных.")
+            upload_df = None
 
     reference_df = _load_pct_no_bk_reference()
     if reference_df is not None:
@@ -161,25 +361,37 @@ def render_checks_no_bk_block() -> None:
                 + "."
             )
 
+    if upload_df is not None:
+        try:
+            _prepare_upload_df(upload_df)
+        except ValueError as exc:
+            st.error(str(exc))
+            upload_df = None
+
+    if upload_df is not None and groups_df is None:
+        st.info(
+            "Справочник магазинов недоступен — таблица групп не будет рассчитана."
+        )
+
     col_sellers, col_shops, col_groups = st.columns([1, 1, 1])
 
     with col_sellers:
         st.markdown("**Продавцы**")
         _render_order_table(
-            build_sellers_no_bk_table(reference_df),
+            build_sellers_no_bk_table(reference_df, upload_df),
             name_column=COL_SELLER,
         )
 
     with col_shops:
         st.markdown("**Магазины**")
         _render_order_table(
-            build_shops_no_bk_table(reference_df),
+            build_shops_no_bk_table(reference_df, upload_df),
             name_column=COL_SHOP,
         )
 
     with col_groups:
         st.markdown("**Группы**")
         _render_order_table(
-            build_groups_no_bk_table(reference_df),
+            build_groups_no_bk_table(reference_df, upload_df, groups_df),
             name_column=COL_GROUP,
         )

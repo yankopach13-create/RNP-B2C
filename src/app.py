@@ -291,7 +291,7 @@ def _render_rnp_b2c_header(
         st.empty()
 
     if st.session_state.show_checks_no_bk_block:
-        render_checks_no_bk_block()
+        render_checks_no_bk_block(groups_df=data.groups)
 
 
 def _inject_rnp_block_styles() -> None:

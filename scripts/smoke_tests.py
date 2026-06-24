@@ -27,6 +27,11 @@ from features.categories import (  # noqa: E402
 )
 from features.data_prep import collect_new_shops, collect_unmatched_products  # noqa: E402
 from features.hookah_products import build_hookah_products_table  # noqa: E402
+from features.checks_no_bk import (  # noqa: E402
+    build_groups_no_bk_table,
+    build_sellers_no_bk_table,
+    build_shops_no_bk_table,
+)
 from features.reference_update import (  # noqa: E402
     _mutate_categories_add_product,
     _mutate_shop_groups,
@@ -210,6 +215,42 @@ def test_mutate_categories_add_product() -> None:
     _assert(not added2 and err2 is not None, "duplicate blocked")
 
 
+def test_checks_no_bk_pcts() -> None:
+    ref = pd.DataFrame(
+        {
+            "Порядок продавцов": ["Иванов", "Петров"],
+            "Порядок магазинов": ["Магазин A", "Магазин B"],
+            "Порядок групп": ["Восток", "Юг"],
+        }
+    )
+    upload = pd.DataFrame(
+        {
+            "Магазин": ["Магазин A", "Магазин A", "Магазин B", "Магазин B"],
+            "Кассир": ["Иванов", "Иванов", "Петров", "Петров"],
+            "количество чеков": [10, 5, 8, 2],
+            "Код клиента": ["123", "", "456", ""],
+        }
+    )
+    groups = pd.DataFrame(
+        {"Магазин": ["Магазин A", "Магазин B"], "Группа": ["Восток", "Юг"]}
+    )
+    sellers = build_sellers_no_bk_table(ref, upload)
+    _assert(
+        sellers.loc[sellers["Продавец"] == "Иванов", "% без БК"].iloc[0] == "33,3%",
+        "seller ivanov",
+    )
+    shops = build_shops_no_bk_table(ref, upload)
+    _assert(
+        shops.loc[shops["Магазин"] == "Магазин B", "% без БК"].iloc[0] == "20,0%",
+        "shop b",
+    )
+    gr = build_groups_no_bk_table(ref, upload, groups)
+    _assert(
+        gr.loc[gr["Группа"] == "Восток", "% без БК"].iloc[0] == "33,3%",
+        "group east",
+    )
+
+
 OFFLINE_TESTS = [
     test_column_letter,
     test_sheet_range_name,
@@ -222,6 +263,7 @@ OFFLINE_TESTS = [
     test_hookah_products_table,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,
+    test_checks_no_bk_pcts,
 ]
 
 
