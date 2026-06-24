@@ -16,7 +16,7 @@ DATA_VERSION_KEY = "data_version"
 APP_DATA_KEY = "app_data"
 PREPARED_KEY = "prepared"
 EXCEL_CACHE_KEY = "excel_cache"
-EXCEL_PREPARED_KEY = "excel_prepared_key"
+DOWNLOAD_RNP_EXCEL_KEY = "download_rnp_b2c_excel"
 DF_REPORT_CACHE_KEY = "df_report_cache"
 DF_REPORT_CACHE_VERSION_KEY = "df_report_cache_version"
 TURNOVER_TABLE_KEY = "turnover_table"
@@ -31,7 +31,6 @@ def _bump_data_version() -> int:
 
 def _clear_derived_caches() -> None:
     st.session_state[EXCEL_CACHE_KEY] = {}
-    st.session_state.pop(EXCEL_PREPARED_KEY, None)
     st.session_state[DF_REPORT_CACHE_KEY] = {}
     st.session_state.pop(TURNOVER_TABLE_KEY, None)
     st.session_state.pop(TURNOVER_CACHE_VERSION_KEY, None)
@@ -86,7 +85,7 @@ def get_cached_excel_bytes(
     prepared: PreparedSalesResult | None,
     week_config: WeekCalculationConfig | None,
 ) -> bytes | None:
-    """Сборка xlsx только при новой комбинации настроек (недели + акциз + версия данных)."""
+    """Сборка xlsx (с кэшем по неделям, акцизу и версии данных)."""
     version = int(st.session_state.get(DATA_VERSION_KEY, 0))
     key = excel_cache_key(week_config, version)
     cache: dict = st.session_state.setdefault(EXCEL_CACHE_KEY, {})
@@ -94,25 +93,7 @@ def get_cached_excel_bytes(
         return cache[key]
     with st.spinner("Формируем Excel…"):
         cache[key] = build_rnp_b2c_excel_bytes(data, prepared, week_config)
-    st.session_state[EXCEL_PREPARED_KEY] = key
     return cache[key]
-
-
-def excel_is_prepared(week_config: WeekCalculationConfig | None) -> bool:
-    """True, если Excel для текущих настроек уже собран и лежит в кэше."""
-    version = int(st.session_state.get(DATA_VERSION_KEY, 0))
-    key = excel_cache_key(week_config, version)
-    cache: dict = st.session_state.get(EXCEL_CACHE_KEY, {})
-    return key in cache
-
-
-def prepare_excel_download(
-    data: AppData,
-    prepared: PreparedSalesResult | None,
-    week_config: WeekCalculationConfig | None,
-) -> bytes | None:
-    """Явная подготовка Excel перед скачиванием (не вызывается при каждом рендере)."""
-    return get_cached_excel_bytes(data, prepared, week_config)
 
 
 def get_df_report_cached(
