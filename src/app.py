@@ -179,6 +179,8 @@ def _render_rnp_b2c_header(
         st.session_state.show_general_rnp_b2c_block = False
     if "show_ai_rnp_b2c_block" not in st.session_state:
         st.session_state.show_ai_rnp_b2c_block = False
+    if "show_checks_no_bk_block" not in st.session_state:
+        st.session_state.show_checks_no_bk_block = False
 
     toggle_label = (
         "▼ РНП B2C (нажмите, чтобы свернуть)"
@@ -266,6 +268,27 @@ def _render_rnp_b2c_header(
             excise_liquid_report_qty=excise_report,
         )
 
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    checks_no_bk_toggle_label = (
+        "▼ % чеков без БК (нажмите, чтобы свернуть)"
+        if st.session_state.show_checks_no_bk_block
+        else "▶ % чеков без БК (нажмите, чтобы развернуть)"
+    )
+    col_checks_no_bk_toggle, col_checks_no_bk_spacer = st.columns([1.35, 1], gap="small")
+    with col_checks_no_bk_toggle:
+        if st.button(
+            checks_no_bk_toggle_label,
+            key="toggle_checks_no_bk_block_btn",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state.show_checks_no_bk_block = (
+                not st.session_state.show_checks_no_bk_block
+            )
+            st.rerun()
+    with col_checks_no_bk_spacer:
+        st.empty()
+
 
 def _inject_rnp_block_styles() -> None:
     st.markdown(
@@ -327,6 +350,28 @@ def _inject_rnp_block_styles() -> None:
         .st-key-toggle_ai_rnp_b2c_block_btn button:focus-visible {
             background-color: #955716 !important;
             border-color: #955716 !important;
+            color: #ffffff !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        .st-key-toggle_checks_no_bk_block_btn button {
+            background-color: #5c3d8f !important;
+            color: #ffffff !important;
+            border: 1px solid #5c3d8f !important;
+            font-weight: 800 !important;
+            font-size: 1.05rem !important;
+            border-radius: 10px !important;
+            min-height: 44px !important;
+            padding: 0.5rem 1rem !important;
+            justify-content: flex-start !important;
+            text-align: left !important;
+        }
+        .st-key-toggle_checks_no_bk_block_btn button:hover,
+        .st-key-toggle_checks_no_bk_block_btn button:active,
+        .st-key-toggle_checks_no_bk_block_btn button:focus,
+        .st-key-toggle_checks_no_bk_block_btn button:focus-visible {
+            background-color: #4a3173 !important;
+            border-color: #4a3173 !important;
             color: #ffffff !important;
             box-shadow: none !important;
             outline: none !important;
