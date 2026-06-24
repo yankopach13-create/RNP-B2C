@@ -9,6 +9,12 @@ REFERENCE_CATEGORIES_FILENAME = "categories.xlsx"
 REFERENCE_FOCUS_FILENAME = "focus.xlsx"
 REFERENCE_CATEGORY_ORDER_FILENAMES = ("category_order.xlsx", "category_order.xls")
 REFERENCE_GROUPS_ORDER_FILENAMES = ("groups_order.xlsx", "groups_order.xls")
+REFERENCE_PCT_NO_BK_FILENAMES = ("pct_no_bk.xlsx",)
+
+# Справочник % без БК (лист %_bk в Google Sheets)
+PCT_NO_BK_COLUMN_SELLERS = "Порядок продавцов"
+PCT_NO_BK_COLUMN_SHOPS = "Порядок магазинов"
+PCT_NO_BK_COLUMN_GROUPS = "Порядок групп"
 
 # Справочник порядка категорий (category_order.xlsx)
 CATEGORY_ORDER_COLUMN_RNP = "РНП"

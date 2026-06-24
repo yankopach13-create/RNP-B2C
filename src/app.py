@@ -36,6 +36,7 @@ from features.excise_liquid import WeekCalculationConfig, excise_margin_deductio
 from features.excel_export import rnp_b2c_excel_filename
 from features.ai_report import render_ai_report_b2c
 from features.general_rnp import render_general_rnp_b2c
+from features.checks_no_bk import render_checks_no_bk_block
 from ui.data_session import (
     DATA_VERSION_KEY,
     DOWNLOAD_RNP_EXCEL_KEY,
@@ -288,6 +289,9 @@ def _render_rnp_b2c_header(
             st.rerun()
     with col_checks_no_bk_spacer:
         st.empty()
+
+    if st.session_state.show_checks_no_bk_block:
+        render_checks_no_bk_block()
 
 
 def _inject_rnp_block_styles() -> None:

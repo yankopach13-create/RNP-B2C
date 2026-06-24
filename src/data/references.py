@@ -19,7 +19,11 @@ _SHEETS_CACHE_TTL_SEC = 600
 _SHEETS_RETRY_ATTEMPTS = 5
 _SHEETS_RETRY_BASE_DELAY_SEC = 2.0
 
-from config.constants import REFERENCE_DIR, REFERENCE_GROUPS_FILENAMES
+from config.constants import (
+    REFERENCE_DIR,
+    REFERENCE_GROUPS_FILENAMES,
+    REFERENCE_PCT_NO_BK_FILENAMES,
+)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SECRETS_PATH = _PROJECT_ROOT / ".streamlit" / "secrets.toml"
@@ -29,6 +33,7 @@ REF_CATEGORIES = "categories"
 REF_CATEGORY_ORDER = "category_order"
 REF_GROUPS_ORDER = "groups_order"
 REF_FOCUS = "focus"
+REF_PCT_NO_BK = "pct_no_bk"
 
 _REFERENCE_META: dict[str, dict[str, Any]] = {
     REF_SHOP_GROUPS: {
@@ -55,6 +60,11 @@ _REFERENCE_META: dict[str, dict[str, Any]] = {
         "sheet": "focus",
         "local": ("focus.xlsx",),
         "title": "Фокусные позиции",
+    },
+    REF_PCT_NO_BK: {
+        "sheet": "%_bk",
+        "local": REFERENCE_PCT_NO_BK_FILENAMES,
+        "title": "% без БК",
     },
 }
 
