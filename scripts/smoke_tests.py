@@ -134,6 +134,24 @@ def test_normalize_app_data_legacy() -> None:
   _assert(migrated.focus_fill_free is None, "focus_fill_free default")
 
 
+def test_hookah_sales_exact_match() -> None:
+    sales = pd.DataFrame(
+        {
+            "Товар ур.2": ["Бестабачная Смесь", "Бестабачная Смесь", "бестабачная смесь"],
+            "Количество": [10, 5, 99],
+        }
+    )
+    qty = _sales_category_qty_from_table(sales, "Бестабачная Смесь")
+    _assert(qty == "15", "exact match only, case sensitive")
+
+
+def _sales_category_qty_from_table(sales: pd.DataFrame, category: str) -> str:
+    from features.hookah_products import _prepare_sales_for_hookah, _sales_category_qty
+
+    prepared, _ = _prepare_sales_for_hookah(sales, None)
+    return _sales_category_qty(prepared, category)
+
+
 def test_hookah_products_table() -> None:
     sales = pd.DataFrame(
         {
@@ -155,7 +173,7 @@ def test_hookah_products_table() -> None:
         }
     )
     groups = pd.DataFrame({"Магазин": ["Shop A"], "Группа": ["Восток"]})
-    table = build_hookah_products_table(sales, hookah, groups, report_week=10)
+    table = build_hookah_products_table(sales, hookah, groups)
     values = dict(zip(table["Метрика"], table["Значение"]))
     _assert(values["1.1 Бестабачная Смесь"] == "10", "bks sales")
     _assert(values["1.2 Уголь для кальяна"] == "5", "coal sales")
@@ -194,6 +212,7 @@ OFFLINE_TESTS = [
     test_collect_unmatched_products,
     test_category_maps_cache,
     test_normalize_app_data_legacy,
+    test_hookah_sales_exact_match,
     test_hookah_products_table,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,

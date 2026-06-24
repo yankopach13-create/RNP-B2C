@@ -53,21 +53,13 @@ _HOOKAH_METRIC_ROWS: tuple[str | None, ...] = (
     "Гродно",
 )
 
+# Полное совпадение со значением «Товар ур.2» в продажах и справочнике.
 _SALES_CATEGORY_BY_METRIC: dict[str, str] = {
     "1.1 Бестабачная Смесь": "Бестабачная Смесь",
     "1.2 Уголь для кальяна": "Уголь для кальяна",
     "1.3 Аксессуары для Кальяна": "Аксессуары для Кальяна",
     "1.4 Кальяны": "Кальяны",
     "1.5 Табачная Смесь": "Табачная Смесь",
-}
-
-# Допустимые варианты написания в «Товар ур.2» (без учёта регистра).
-_SALES_CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
-    "Бестабачная Смесь": ("бестабачная смесь", "бкс", "бестабачные смеси"),
-    "Уголь для кальяна": ("уголь для кальяна",),
-    "Аксессуары для Кальяна": ("аксессуары для кальяна",),
-    "Кальяны": ("кальяны",),
-    "Табачная Смесь": ("табачная смесь", "табачные смеси"),
 }
 
 _HOOKAH_GROUP_ROWS: tuple[str, ...] = _HOOKAH_METRIC_ROWS[-12:]  # type: ignore[assignment]
@@ -82,11 +74,6 @@ _HOOKAH_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_PRODUCT_QTY: (COL_PRODUCT_QTY, "Количество товара"),
 }
 
-_SALES_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
-    COL_SALES_U2: (COL_SALES_U2, "Товар Ур.2", "товар ур.2", "Товар2", "Товар 2"),
-    COL_SALES_QTY: (COL_SALES_QTY, "количество", "Кол-во", "Кол-во, шт"),
-}
-
 
 def build_hookah_products_table(
     sales_df: pd.DataFrame | None = None,
@@ -95,7 +82,7 @@ def build_hookah_products_table(
     report_week: int | None = None,
 ) -> pd.DataFrame:
     """Таблица метрик кальянной продукции."""
-    values = _compute_hookah_metrics(
+    values, _ = _compute_hookah_metrics(
         sales_df=sales_df,
         focus_hookah=focus_hookah,
         groups_df=groups_df,
@@ -123,12 +110,20 @@ def render_hookah_products_block(
     else:
         st.markdown("**Кальянная продукция**")
 
-    table = build_hookah_products_table(
+    values, warnings = _compute_hookah_metrics(
         sales_df=sales_df,
         focus_hookah=focus_hookah,
         groups_df=groups_df,
         report_week=report_week,
     )
+    for message in warnings:
+        st.warning(message)
+
+    rows = [
+        [label or "", values.get(label, "") if label else ""]
+        for label in _HOOKAH_METRIC_ROWS
+    ]
+    table = pd.DataFrame(rows, columns=[COL_METRIC, COL_VALUE])
     st.dataframe(
         table,
         use_container_width=True,
@@ -151,10 +146,12 @@ def _compute_hookah_metrics(
     focus_hookah: pd.DataFrame | None,
     groups_df: pd.DataFrame | None,
     report_week: int | None,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], list[str]]:
     out: dict[str, str] = {}
+    warnings: list[str] = []
 
-    sales_week = _prepare_sales_for_hookah(sales_df, report_week)
+    sales_week, sales_warnings = _prepare_sales_for_hookah(sales_df, report_week)
+    warnings.extend(sales_warnings)
     for metric, category in _SALES_CATEGORY_BY_METRIC.items():
         out[metric] = _sales_category_qty(sales_week, category)
 
@@ -170,38 +167,53 @@ def _compute_hookah_metrics(
                 hookah_shops, shop_group_map, ref_group
             )
 
-    return out
+    return out, warnings
 
 
 def _prepare_sales_for_hookah(
     sales_df: pd.DataFrame | None,
     report_week: int | None,
-) -> pd.DataFrame | None:
+) -> tuple[pd.DataFrame | None, list[str]]:
     if sales_df is None or sales_df.empty:
-        return None
-    try:
-        df = _resolve_columns(sales_df, _SALES_COLUMN_ALIASES)
-    except ValueError:
-        return None
+        return None, []
+
+    df = sales_df.copy()
+    df.columns = df.columns.astype(str).str.strip()
+
+    missing = [col for col in (COL_SALES_U2, COL_SALES_QTY) if col not in df.columns]
+    if missing:
+        return None, [
+            "В продажах отсутствуют столбцы: " + ", ".join(f"«{c}»" for c in missing)
+        ]
+
     if report_week is not None:
         df = filter_sales_by_report_week(df, report_week)
-    return df
+        if df.empty:
+            return None, [f"В продажах нет строк с отчётной неделей {report_week}."]
+
+    return df, []
 
 
 def _sales_category_qty(sales_df: pd.DataFrame | None, category: str) -> str:
+    """Сумма «Количество» при полном совпадении «Товар ур.2» (после strip)."""
     if sales_df is None or sales_df.empty:
         return ""
-    if COL_SALES_U2 not in sales_df.columns:
-        return ""
-    aliases = _SALES_CATEGORY_ALIASES.get(category, (_normalize_label(category),))
-    alias_set = {_normalize_label(name) for name in aliases}
-    u2 = sales_df[COL_SALES_U2].map(_normalize_label)
-    mask = u2.isin(alias_set)
+
+    u2 = sales_df[COL_SALES_U2].map(_norm_cell)
+    mask = u2 == category
     subset = sales_df.loc[mask]
     if subset.empty:
         return ""
-    qty = float(subset[COL_SALES_QTY].sum()) if COL_SALES_QTY in subset.columns else 0.0
+
+    qty = pd.to_numeric(subset[COL_SALES_QTY], errors="coerce").fillna(0).sum()
     return _fmt_int(qty)
+
+
+def _norm_cell(value: object) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    text = str(value).replace("\xa0", " ").strip()
+    return re.sub(r"\s+", " ", text)
 
 
 def _prepare_hookah_shops(raw: pd.DataFrame | None) -> pd.DataFrame | None:
@@ -273,8 +285,6 @@ def _resolve_columns(
             if key in lower_map:
                 found = lower_map[key]
                 break
-        if found is None and canonical == COL_SALES_U2:
-            found = _find_product_level2_column(df.columns)
         if found is None:
             raise ValueError(f"Отсутствует столбец «{canonical}»")
         resolved[canonical] = found
@@ -283,14 +293,6 @@ def _resolve_columns(
     if rename:
         df = df.rename(columns=rename)
     return df
-
-
-def _find_product_level2_column(columns) -> str | None:
-    for col in columns:
-        name = str(col).strip().casefold()
-        if "товар" in name and "2" in name:
-            return str(col).strip()
-    return None
 
 
 def _build_shop_group_map(groups_df: pd.DataFrame | None) -> dict[str, str]:

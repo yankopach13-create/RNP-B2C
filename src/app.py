@@ -597,10 +597,10 @@ def _render_shop_economy_and_lfl(
 ) -> None:
     """Экономика магазинов, факторный анализ и кальянная продукция."""
     hookah_kwargs = {
-        "sales_df": data.sales,
+        "sales_df": sales_df if sales_df is not None else data.sales,
         "focus_hookah": data.focus_hookah,
         "groups_df": data.groups,
-        "report_week": report_week,
+        "report_week": None if sales_df is not None else report_week,
         "embedded": True,
     }
     has_shop = sales_df is not None and not sales_df.empty
