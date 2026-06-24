@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -284,14 +285,38 @@ def _sheets_api_with_retry(action: Callable[[], _T]) -> _T:
     raise RuntimeError("Не удалось выполнить запрос к Google Sheets.")
 
 
-def _worksheet_to_dataframe(worksheet) -> pd.DataFrame:
-    rows = _sheets_api_with_retry(worksheet.get_all_values)
+def _sheet_range_name(worksheet_name: str, cell_range: str = "A:ZZ") -> str:
+    """A1-диапазон листа для batchGet (экранирование имён с пробелами)."""
+    escaped = worksheet_name.replace("'", "''")
+    if re.search(r"[^\w]", worksheet_name):
+        return f"'{escaped}'!{cell_range}"
+    return f"{worksheet_name}!{cell_range}"
+
+
+def _column_letter(col_idx: int) -> str:
+    """1-based индекс столбца → буква(ы) Excel."""
+    if col_idx < 1:
+        return "A"
+    result = ""
+    n = col_idx
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        result = chr(65 + rem) + result
+    return result
+
+
+def _rows_to_dataframe(rows: list[list[Any]]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
     header = [str(cell).strip() for cell in rows[0]]
     if len(rows) == 1:
         return pd.DataFrame(columns=header)
     return pd.DataFrame(rows[1:], columns=header)
+
+
+def _worksheet_to_dataframe(worksheet) -> pd.DataFrame:
+    rows = _sheets_api_with_retry(worksheet.get_all_values)
+    return _rows_to_dataframe(rows)
 
 
 def _cell_value(value: Any) -> Any:
@@ -316,33 +341,122 @@ def _dataframe_to_sheet_values(df: pd.DataFrame) -> list[list[Any]]:
     return values
 
 
-@st.cache_data(ttl=_SHEETS_CACHE_TTL_SEC, show_spinner=False)
-def _load_all_references_from_sheets(spreadsheet_id: str) -> dict[str, pd.DataFrame]:
-    """Один open таблицы и пакетная загрузка листов — меньше read-запросов к API."""
-    spreadsheet = _open_spreadsheet(spreadsheet_id)
+def _load_references_via_batch_get(spreadsheet) -> dict[str, pd.DataFrame]:
+    """Все листы одним values_batch_get."""
+    keys_and_names = [(key, _sheet_name(key)) for key in _REFERENCE_META]
+    ranges = [_sheet_range_name(name) for _, name in keys_and_names]
+
+    def _batch_get():
+        return spreadsheet.values_batch_get(ranges)
+
+    result = _sheets_api_with_retry(_batch_get)
+    value_ranges = result.get("valueRanges", []) if isinstance(result, dict) else []
+    loaded: dict[str, pd.DataFrame] = {}
+    for i, (key, _) in enumerate(keys_and_names):
+        vr = value_ranges[i] if i < len(value_ranges) else {}
+        rows = vr.get("values", []) if isinstance(vr, dict) else []
+        loaded[key] = _rows_to_dataframe(rows)
+    return loaded
+
+
+def _load_references_via_worksheets(spreadsheet) -> dict[str, pd.DataFrame]:
+    """Fallback: по одному get_all_values на лист."""
     loaded: dict[str, pd.DataFrame] = {}
     for key in _REFERENCE_META:
         worksheet_name = _sheet_name(key)
-        worksheet = _sheets_api_with_retry(lambda name=worksheet_name: spreadsheet.worksheet(name))
+        worksheet = _sheets_api_with_retry(
+            lambda name=worksheet_name: spreadsheet.worksheet(name)
+        )
         loaded[key] = _worksheet_to_dataframe(worksheet)
     return loaded
 
 
+@st.cache_data(ttl=_SHEETS_CACHE_TTL_SEC, show_spinner=False)
+def _load_all_references_from_sheets(spreadsheet_id: str) -> dict[str, pd.DataFrame]:
+    """Один open таблицы и пакетная загрузка листов — меньше read-запросов к API."""
+    spreadsheet = _open_spreadsheet(spreadsheet_id)
+    try:
+        return _load_references_via_batch_get(spreadsheet)
+    except Exception:  # noqa: BLE001
+        return _load_references_via_worksheets(spreadsheet)
+
+
 def _save_to_sheets(spreadsheet_id: str, worksheet_name: str, df: pd.DataFrame) -> None:
+    """Запись без предварительного clear — сначала update, затем обрезка хвоста."""
     spreadsheet = _open_spreadsheet(spreadsheet_id)
     worksheet = _sheets_api_with_retry(lambda: spreadsheet.worksheet(worksheet_name))
 
     def _write() -> None:
-        worksheet.clear()
+        if df.empty and not list(df.columns):
+            return
         if df.empty and list(df.columns):
-            worksheet.update([list(df.columns)], value_input_option="USER_ENTERED")
+            values: list[list[Any]] = [list(df.columns)]
+        else:
+            values = _dataframe_to_sheet_values(df)
+
+        n_rows = len(values)
+        n_cols = len(values[0]) if values else 0
+        if n_cols == 0:
             return
-        if df.empty:
-            return
-        values = _dataframe_to_sheet_values(df)
-        worksheet.update(values, value_input_option="USER_ENTERED")
+
+        end_col = _column_letter(n_cols)
+        range_name = f"A1:{end_col}{n_rows}"
+        worksheet.update(range_name, values, value_input_option="USER_ENTERED")
+
+        old_row_count = worksheet.row_count
+        old_col_count = worksheet.col_count
+        if old_row_count > n_rows:
+            tail_end_col = _column_letter(max(n_cols, old_col_count))
+            tail_range = f"A{n_rows + 1}:{tail_end_col}{old_row_count}"
+            worksheet.batch_clear([tail_range])
 
     _sheets_api_with_retry(_write)
+
+
+def _append_rows_to_sheets(
+    spreadsheet_id: str,
+    worksheet_name: str,
+    df: pd.DataFrame,
+) -> None:
+    """Добавляет строки в конец листа, не трогая существующие данные."""
+    if df.empty:
+        return
+    spreadsheet = _open_spreadsheet(spreadsheet_id)
+    worksheet = _sheets_api_with_retry(lambda: spreadsheet.worksheet(worksheet_name))
+
+    existing = _sheets_api_with_retry(worksheet.get_all_values)
+    if not existing:
+        _save_to_sheets(spreadsheet_id, worksheet_name, df)
+        return
+
+    payload = df.copy().where(pd.notnull(df), "")
+    rows: list[list[Any]] = []
+    for row in payload.itertuples(index=False, name=None):
+        rows.append([_cell_value(v) for v in row])
+
+    def _append() -> None:
+        worksheet.append_rows(rows, value_input_option="USER_ENTERED")
+
+    _sheets_api_with_retry(_append)
+
+
+def load_all_references(keys: list[str] | None = None) -> dict[str, pd.DataFrame]:
+    """Загружает несколько справочников за один проход (кэш / batchGet)."""
+    wanted = keys if keys is not None else list(_REFERENCE_META.keys())
+    unknown = [k for k in wanted if k not in _REFERENCE_META]
+    if unknown:
+        raise ValueError(f"Неизвестные справочники: {', '.join(unknown)}")
+
+    if sheets_configured():
+        refs = _references_config()
+        spreadsheet_id = str(refs["spreadsheet_id"]).strip()
+        batch = _load_all_references_from_sheets(spreadsheet_id)
+        return {k: batch[k].copy() for k in wanted}
+
+    loaded: dict[str, pd.DataFrame] = {}
+    for key in wanted:
+        loaded[key] = load_reference(key)
+    return loaded
 
 
 def load_reference(key: str) -> pd.DataFrame:
@@ -370,11 +484,7 @@ def load_reference(key: str) -> pd.DataFrame:
     return pd.read_excel(local_path)
 
 
-def save_reference(key: str, df: pd.DataFrame) -> None:
-    """Сохраняет справочник в Google Sheets или локальный xlsx."""
-    if key not in _REFERENCE_META:
-        raise ValueError(f"Неизвестный справочник: {key}")
-
+def _save_reference_impl(key: str, df: pd.DataFrame) -> None:
     if sheets_configured():
         refs = _references_config()
         spreadsheet_id = str(refs["spreadsheet_id"]).strip()
@@ -392,7 +502,51 @@ def save_reference(key: str, df: pd.DataFrame) -> None:
             local_path = REFERENCE_DIR / first
         local_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_excel(local_path, index=False)
+
+
+def save_reference(key: str, df: pd.DataFrame, *, invalidate_cache: bool = True) -> None:
+    """Сохраняет справочник в Google Sheets или локальный xlsx."""
+    if key not in _REFERENCE_META:
+        raise ValueError(f"Неизвестный справочник: {key}")
+
+    _save_reference_impl(key, df)
+    if invalidate_cache:
+        clear_reference_cache()
+
+
+def save_references_batch(updates: dict[str, pd.DataFrame]) -> None:
+    """Сохраняет несколько справочников; кэш чтения сбрасывается один раз в конце."""
+    for key, df in updates.items():
+        if key not in _REFERENCE_META:
+            raise ValueError(f"Неизвестный справочник: {key}")
+    for key, df in updates.items():
+        _save_reference_impl(key, df)
     clear_reference_cache()
+
+
+def append_reference_rows(key: str, df: pd.DataFrame, *, invalidate_cache: bool = True) -> None:
+    """Добавляет строки в конец справочника (без перезаписи всего листа)."""
+    if key not in _REFERENCE_META:
+        raise ValueError(f"Неизвестный справочник: {key}")
+    if df.empty:
+        return
+
+    if sheets_configured():
+        refs = _references_config()
+        spreadsheet_id = str(refs["spreadsheet_id"]).strip()
+        _append_rows_to_sheets(spreadsheet_id, _sheet_name(key), df)
+    elif _is_streamlit_cloud():
+        raise RuntimeError(
+            f"Нельзя сохранить справочник «{get_reference_title(key)}» без Google Sheets. "
+            f"{_secrets_setup_hint()}"
+        )
+    else:
+        existing = load_reference(key)
+        combined = pd.concat([existing, df], ignore_index=True)
+        _save_reference_impl(key, combined)
+
+    if invalidate_cache:
+        clear_reference_cache()
 
 
 def clear_reference_cache() -> None:

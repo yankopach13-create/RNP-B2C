@@ -21,9 +21,9 @@ from features.reference_orders import (
     resolve_groups_order,
 )
 from features.reference_update import (
-    add_product_to_reference,
-    add_shop_to_reference,
-    insert_categories_to_order,
+    QuickCategoryOrderEntry,
+    QuickProductEntry,
+    apply_reference_updates_batch,
 )
 
 CREATE_NEW_CATEGORY_LABEL = "Создать новую категорию"
@@ -315,19 +315,19 @@ def render_quick_reference_update(
     if not submitted:
         return
 
-    ok_any = False
-    messages: list[str] = []
+    shop_entries: list[tuple[str, str]] = []
+    validation_messages: list[str] = []
 
     if new_shops:
         for i, shop in enumerate(new_shops):
             ks = _key_part(shop) + f"_{i}"
             sel = str(st.session_state.get(f"ref_shop_sel_{ks}", "") or "").strip()
             if not sel:
-                messages.append(f"«{shop}»: выберите группу РНП.")
+                validation_messages.append(f"«{shop}»: выберите группу РНП.")
                 continue
-            ok, msg = add_shop_to_reference(shop, sel, None)
-            ok_any = ok_any or ok
-            messages.append(f"«{shop}»: {msg}")
+            shop_entries.append((shop, sel))
+
+    product_entries: list[QuickProductEntry] = []
 
     if unmatched_products:
         for j, (u2, u3, u4_variants) in enumerate(unmatched_products):
@@ -341,54 +341,51 @@ def render_quick_reference_update(
             )
 
             if err:
-                messages.append(f"«{u2} \\ {u3}»: {err}")
+                validation_messages.append(f"«{u2} \\ {u3}»: {err}")
                 continue
             if not pair:
-                messages.append(
+                validation_messages.append(
                     f"«{u2} \\ {u3}»: выберите категорию из списка или пункт "
                     f"«{CREATE_NEW_CATEGORY_LABEL}» и заполните поля ниже."
                 )
                 continue
 
+            new_category: QuickCategoryOrderEntry | None = None
             if is_new:
                 rnp, general = parse_category_pair(pair)
-                rnp_after = _parse_position_choice(
-                    st.session_state.get(f"ref_pc_pos_rnp_{kp}", _POSITION_END)
+                new_category = QuickCategoryOrderEntry(
+                    rnp=rnp,
+                    general=general,
+                    rnp_after=_parse_position_choice(
+                        st.session_state.get(f"ref_pc_pos_rnp_{kp}", _POSITION_END)
+                    ),
+                    general_after=_parse_position_choice(
+                        st.session_state.get(f"ref_pc_pos_gen_{kp}", _POSITION_END)
+                    ),
                 )
-                gen_after = _parse_position_choice(
-                    st.session_state.get(f"ref_pc_pos_gen_{kp}", _POSITION_END)
-                )
-                ok_order, msg_order = insert_categories_to_order(
-                    rnp,
-                    general,
-                    rnp_after=rnp_after,
-                    general_after=gen_after,
-                )
-                if ok_order:
-                    ok_any = ok_any or ("Добавлено" in msg_order)
-                if ok_order and "Добавлено" in msg_order:
-                    messages.append(msg_order)
-                elif not ok_order:
-                    messages.append(msg_order)
 
-            n_dup = 0
-            for u4 in u4_variants:
-                ok, msg = add_product_to_reference(u2, u3, u4, pair)
-                if ok:
-                    ok_any = True
-                    messages.append(msg)
-                elif "уже есть" in msg.lower():
-                    n_dup += 1
-                else:
-                    messages.append(msg)
-            if n_dup:
-                messages.append(
-                    f"«{u2} \\ {u3}»: {n_dup} поз. уже есть в справочнике — при необходимости "
-                    "обновите справочник и снова нажмите «Загрузить данные»."
+            product_entries.append(
+                QuickProductEntry(
+                    u2=u2,
+                    u3=u3,
+                    u4_variants=list(u4_variants),
+                    category_pair=pair,
+                    new_category=new_category,
                 )
+            )
+
+    ok_any = False
+    messages: list[str] = list(validation_messages)
+
+    if shop_entries or product_entries:
+        ok_any, batch_messages = apply_reference_updates_batch(
+            shop_entries, product_entries
+        )
+        messages.extend(batch_messages)
 
     for m in messages:
-        if "обновл" in m.lower() or "актуальна" in m.lower() or "Добавлено" in m:
+        low = m.lower()
+        if "обновл" in low or "добавлен" in low or "актуальна" in low:
             st.success(m)
         elif "не удалось" in m.lower() or m.startswith("Не "):
             st.error(m)
