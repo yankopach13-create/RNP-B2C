@@ -38,10 +38,7 @@ from features.ai_report import render_ai_report_b2c
 from features.general_rnp import render_general_rnp_b2c
 from features.checks_no_bk import render_checks_no_bk_block
 from ui.data_session import (
-    DATA_VERSION_KEY,
     DOWNLOAD_RNP_EXCEL_KEY,
-    EXCEL_CACHE_KEY,
-    excel_cache_key,
     get_cached_excel_bytes,
     get_cached_turnover_table,
     get_df_report_cached,
@@ -135,33 +132,22 @@ def _render_excel_download_button(
     prepared,
     week_config: WeekCalculationConfig | None,
 ) -> None:
-    """Одна кнопка «Скачать»: сборка Excel при первом нажатии, затем скачивание."""
+    """Скачивание Excel: сборка в кэш при необходимости, одно нажатие на загрузку."""
     report_week = week_config.report_week if week_config else None
 
     @st.fragment
     def _download_fragment() -> None:
-        version = int(st.session_state.get(DATA_VERSION_KEY, 0))
-        cache_key = excel_cache_key(week_config, version)
-        cache: dict = st.session_state.setdefault(EXCEL_CACHE_KEY, {})
-
-        if cache_key in cache:
-            st.download_button(
-                label="Скачать РНП отчёт в Excel",
-                data=cache[cache_key],
-                file_name=rnp_b2c_excel_filename(report_week),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="secondary",
-                use_container_width=True,
-                key=DOWNLOAD_RNP_EXCEL_KEY,
-            )
-        elif st.button(
-            "Скачать РНП отчёт в Excel",
+        excel_bytes = get_cached_excel_bytes(data, prepared, week_config)
+        st.download_button(
+            label="Скачать РНП отчёт в Excel",
+            data=excel_bytes or b"",
+            file_name=rnp_b2c_excel_filename(report_week),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="secondary",
             use_container_width=True,
-            key="excel_build_and_download",
-        ):
-            get_cached_excel_bytes(data, prepared, week_config)
-            st.rerun()
+            key=DOWNLOAD_RNP_EXCEL_KEY,
+            disabled=not excel_bytes,
+        )
 
     _download_fragment()
 
