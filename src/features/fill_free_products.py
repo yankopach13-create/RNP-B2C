@@ -28,9 +28,6 @@ COL_CLIENT = "Код клиента"
 
 ROW_B2C = "Весь B2C"
 
-FILL_FREE_GROUP_COL_WIDTH_PX = 250
-FILL_FREE_VALUE_COL_WIDTH_PX = 95
-
 _FILL_FREE_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_YEAR_WEEK: (COL_YEAR_WEEK, "год-неделя", "Год неделя"),
     COL_SHOP: (COL_SHOP, "магазин"),
@@ -116,27 +113,12 @@ def render_fill_free_products_block(
         st.info("Загрузите файл Fill free.")
         return
 
-    week_label = table.columns[-1]
     st.dataframe(
         table,
         use_container_width=True,
         hide_index=True,
         height=_financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
-        column_config={
-            COL_GROUP: st.column_config.TextColumn(
-                COL_GROUP,
-                width=FILL_FREE_GROUP_COL_WIDTH_PX,
-            ),
-            COL_CUMULATIVE: st.column_config.TextColumn(
-                COL_CUMULATIVE,
-                width=FILL_FREE_VALUE_COL_WIDTH_PX,
-            ),
-            week_label: st.column_config.TextColumn(
-                week_label,
-                width=FILL_FREE_VALUE_COL_WIDTH_PX,
-            ),
-        },
     )
 
 

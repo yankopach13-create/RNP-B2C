@@ -710,12 +710,6 @@ def _render_shop_economy_and_lfl(
         else:
             st.info("Нет данных по магазинам.")
 
-        col_hookah, col_fill_free = st.columns(2)
-        with col_hookah:
-            render_hookah_products_block(**hookah_kwargs)
-        with col_fill_free:
-            render_fill_free_products_block(**fill_free_kwargs)
-
     with col_lfl:
         if has_lfl:
             render_lfl_block(
@@ -736,6 +730,13 @@ def _render_shop_economy_and_lfl(
                 "Нет данных для факторного анализа "
                 "(загрузите продажи с колонкой «Неделя» или отдельный файл)."
             )
+
+    st.divider()
+    col_hookah, col_fill_free = st.columns(2)
+    with col_hookah:
+        render_hookah_products_block(**hookah_kwargs)
+    with col_fill_free:
+        render_fill_free_products_block(**fill_free_kwargs)
 
 
 if __name__ == "__main__":
