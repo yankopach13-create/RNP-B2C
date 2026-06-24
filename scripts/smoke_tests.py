@@ -26,6 +26,7 @@ from features.categories import (  # noqa: E402
     unique_category_pairs,
 )
 from features.data_prep import collect_new_shops, collect_unmatched_products  # noqa: E402
+from features.fill_free_products import build_fill_free_table  # noqa: E402
 from features.hookah_products import build_hookah_products_table  # noqa: E402
 from features.checks_no_bk import (  # noqa: E402
     build_groups_no_bk_table,
@@ -195,6 +196,30 @@ def test_hookah_products_table() -> None:
     _assert(values["Юг"] == "", "south nesting empty")
 
 
+def test_fill_free_products_table() -> None:
+    fill_free = pd.DataFrame(
+        {
+            "Год-Неделя": ["2026-10", "2026-10", "2026-11", "2026-11"],
+            "Магазин": ["Shop A", "Shop A", "Shop B", "Shop B"],
+            "Неделя": [10, 10, 11, 11],
+            "Клиентов": [1, 1, 1, 1],
+            "Код клиента": ["C1", "C2", "C1", "C3"],
+        }
+    )
+    groups = pd.DataFrame({"Магазин": ["Shop A", "Shop B"], "Группа": ["Восток", "Юг"]})
+    table, warnings = build_fill_free_table(fill_free, groups, 11, ["Восток", "Юг"])
+    _assert(not warnings, "no warnings")
+    _assert(table is not None, "table built")
+    week_col = "Неделя 11"
+    values = {row["Группа"]: row for _, row in table.iterrows()}
+    _assert(values["Весь B2C"]["Накопительно"] == "3", "b2c cumulative")
+    _assert(values["Весь B2C"][week_col] == "2", "b2c week")
+    _assert(values["Восток"]["Накопительно"] == "2", "east cumulative")
+    _assert(values["Восток"][week_col] == "", "east week empty")
+    _assert(values["Юг"]["Накопительно"] == "2", "south cumulative")
+    _assert(values["Юг"][week_col] == "2", "south week")
+
+
 def test_mutate_categories_add_product() -> None:
     df = pd.DataFrame(
         columns=[
@@ -294,6 +319,7 @@ OFFLINE_TESTS = [
     test_normalize_app_data_legacy,
     test_hookah_sales_exact_match,
     test_hookah_products_table,
+    test_fill_free_products_table,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,
     test_checks_no_bk_new_sellers,

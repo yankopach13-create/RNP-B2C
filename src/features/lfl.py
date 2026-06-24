@@ -7,21 +7,13 @@ from features.excise_liquid import (
     excise_margin_deduction,
 )
 from features.metrics import (
-    FINANCIAL_TABLE_HEADER_HEIGHT_PX,
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    _full_table_height,
 )
 from features.reference_orders import resolve_categories_rnp
 
-LFL_VISIBLE_ROWS = 4
 LFL_CATEGORY_COL_WIDTH_PX = 200
 LFL_METRIC_COL_WIDTH_PX = 112
-
-
-def _lfl_table_height() -> int:
-    return (
-        FINANCIAL_TABLE_HEADER_HEIGHT_PX
-        + LFL_VISIBLE_ROWS * FINANCIAL_TABLE_ROW_HEIGHT_PX
-    )
 
 
 def _lfl_column_config(table: pd.DataFrame) -> dict:
@@ -86,7 +78,7 @@ def render_lfl_block(
         table,
         use_container_width=True,
         hide_index=True,
-        height=_lfl_table_height(),
+        height=_full_table_height(len(table)),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config=_lfl_column_config(table),
     )

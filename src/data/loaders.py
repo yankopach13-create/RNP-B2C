@@ -358,6 +358,10 @@ def load_all_data(files) -> AppData:
     )
     if focus_fill_free_df is not None:
         focus_fill_free_df.columns = focus_fill_free_df.columns.str.strip()
+        _coerce_numeric_columns(
+            focus_fill_free_df,
+            ["Неделя", "неделя", "Клиентов", "клиентов"],
+        )
 
     return AppData(
         sales=sales_df,

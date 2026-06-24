@@ -32,7 +32,7 @@ from features.metrics import (
     _build_shop_economy_table,
     _can_build_financial_metrics,
     _fmt_fin_int,
-    FINANCIAL_TABLE_HEADER_HEIGHT_PX,
+    _full_table_height,
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
 )
 from features.excise_liquid import WeekCalculationConfig, excise_margin_deduction
@@ -57,7 +57,6 @@ st.set_page_config(page_title="B2C РНП", page_icon="📊", layout="wide")
 
 SHOP_ECONOMY_SALES_COL_WIDTH_PX = 70
 SHOP_ECONOMY_SHOP_COL_WIDTH_PX = 165
-SHOP_ECONOMY_VISIBLE_ROWS = 4
 
 
 def main():
@@ -644,6 +643,9 @@ def _render_shop_economy_and_lfl(
     }
     fill_free_kwargs = {
         "focus_fill_free": data.focus_fill_free,
+        "groups_df": data.groups,
+        "groups_order_rnp": data.groups_order_rnp,
+        "report_week": report_week,
         "embedded": True,
     }
     has_shop = sales_df is not None and not sales_df.empty
@@ -671,10 +673,7 @@ def _render_shop_economy_and_lfl(
                     shop_table.reset_index(),
                     use_container_width=True,
                     hide_index=True,
-                    height=(
-                        FINANCIAL_TABLE_HEADER_HEIGHT_PX
-                        + SHOP_ECONOMY_VISIBLE_ROWS * FINANCIAL_TABLE_ROW_HEIGHT_PX
-                    ),
+                    height=_full_table_height(len(shop_table)),
                     row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
                     column_config={
                         "Магазин": st.column_config.TextColumn(
