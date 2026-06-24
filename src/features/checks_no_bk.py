@@ -68,6 +68,59 @@ def _key_part(value: str) -> str:
     return re.sub(r"[^\w]+", "_", str(value)[:48], flags=re.UNICODE).strip("_") or "x"
 
 
+def _resolve_reference_sellers_column(df: pd.DataFrame) -> str | None:
+    columns = [str(c).strip() for c in df.columns]
+    if PCT_NO_BK_COLUMN_SELLERS in columns:
+        return PCT_NO_BK_COLUMN_SELLERS
+    for col in columns:
+        if "продавц" in col.casefold():
+            return col
+    return columns[0] if columns else None
+
+
+def _non_empty_series_count(series: pd.Series) -> int:
+    normalized = series.map(_clean_cashier_label)
+    return int(normalized.ne("").sum())
+
+
+def _clean_cashier_label(value: object) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    label = str(value).strip()
+    if label.lower() in ("nan", "none", "<na>"):
+        return ""
+    if re.fullmatch(r"-?\d+\.0", label):
+        label = label[:-2]
+    return label
+
+
+def _pick_best_column(
+    df: pd.DataFrame,
+    lower_map: dict[str, str],
+    aliases: tuple[str, ...],
+    *,
+    keyword_hints: tuple[str, ...] = (),
+) -> str | None:
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for alias in aliases:
+        key = alias.casefold()
+        if key in lower_map:
+            col = lower_map[key]
+            if col not in seen:
+                candidates.append(col)
+                seen.add(col)
+    for key, col in lower_map.items():
+        if col in seen:
+            continue
+        if any(hint in key for hint in keyword_hints):
+            candidates.append(col)
+            seen.add(col)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda col: _non_empty_series_count(df[col]))
+
+
 def collect_new_sellers(
     upload_df: pd.DataFrame,
     reference_df: pd.DataFrame | None,
@@ -81,25 +134,44 @@ def collect_new_sellers(
     if reference_df is not None and not reference_df.empty:
         ref_df = reference_df.copy()
         ref_df.columns = ref_df.columns.astype(str).str.strip()
-        if PCT_NO_BK_COLUMN_SELLERS in ref_df.columns:
-            for name in _column_names_from_reference(
-                ref_df,
-                PCT_NO_BK_COLUMN_SELLERS,
-            ):
+        sellers_col = _resolve_reference_sellers_column(ref_df)
+        if sellers_col:
+            for name in _column_names_from_reference(ref_df, sellers_col):
                 ref_keys.add(_normalize_seller_key(name))
 
-    new_sellers: list[str] = []
-    seen: set[str] = set()
+    file_sellers: dict[str, str] = {}
     for key, group in prepared.groupby("_seller_key", sort=False):
-        if not key or key in ref_keys or key in seen:
+        if not key or key in ref_keys:
             continue
-        seen.add(key)
-        new_sellers.append(_canonical_seller_label(group[COL_UPLOAD_CASHIER]))
+        total_checks = float(group[COL_UPLOAD_CHECKS].sum())
+        if total_checks <= 0:
+            continue
+        label = _best_cashier_label(group[COL_UPLOAD_CASHIER])
+        if not label:
+            continue
+        prev = file_sellers.get(key)
+        if prev is None or len(label) > len(prev):
+            file_sellers[key] = label
 
-    return sorted(new_sellers, key=lambda x: x.casefold())
+    return sorted(file_sellers.values(), key=lambda x: x.casefold())
 
 
-def _render_new_sellers_panel(new_sellers: list[str]) -> None:
+def _best_cashier_label(series: pd.Series) -> str:
+    counts: dict[str, int] = {}
+    for value in series:
+        label = _clean_cashier_label(value)
+        if not label:
+            continue
+        counts[label] = counts.get(label, 0) + 1
+    if not counts:
+        return ""
+    return max(counts.items(), key=lambda item: (item[1], len(item[0])))[0]
+
+
+def _render_new_sellers_panel(new_sellers: list[str], *, file_loaded: bool) -> None:
+    if not file_loaded:
+        return
+
     if not new_sellers:
         return
 
@@ -174,11 +246,7 @@ def _normalize_seller_key(value: object) -> str:
 
 
 def _canonical_seller_label(series: pd.Series) -> str:
-    for value in series:
-        label = str(value).strip()
-        if label and label.lower() not in ("nan", "none"):
-            return label
-    return ""
+    return _best_cashier_label(series)
 
 
 def _normalize_shop_key(value: object) -> str:
@@ -196,9 +264,30 @@ def _resolve_upload_columns(raw: pd.DataFrame) -> pd.DataFrame:
     df.columns = df.columns.astype(str).str.strip()
     lower_map = {str(c).strip().casefold(): c for c in df.columns}
     resolved: dict[str, str] = {}
-    for canonical, names in _UPLOAD_COLUMN_ALIASES.items():
+
+    shop_col = _pick_best_column(
+        df,
+        lower_map,
+        _UPLOAD_COLUMN_ALIASES[COL_UPLOAD_SHOP],
+        keyword_hints=("магазин",),
+    )
+    if shop_col is None:
+        raise ValueError(f"В файле отсутствует столбец «{COL_UPLOAD_SHOP}».")
+    resolved[COL_UPLOAD_SHOP] = shop_col
+
+    cashier_col = _pick_best_column(
+        df,
+        lower_map,
+        _UPLOAD_COLUMN_ALIASES[COL_UPLOAD_CASHIER],
+        keyword_hints=("кассир", "продавец", "сотрудник"),
+    )
+    if cashier_col is None:
+        raise ValueError(f"В файле отсутствует столбец «{COL_UPLOAD_CASHIER}».")
+    resolved[COL_UPLOAD_CASHIER] = cashier_col
+
+    for canonical in (COL_UPLOAD_CHECKS, COL_UPLOAD_CLIENT):
         found = None
-        for alias in names:
+        for alias in _UPLOAD_COLUMN_ALIASES[canonical]:
             key = alias.casefold()
             if key in lower_map:
                 found = lower_map[key]
@@ -208,6 +297,9 @@ def _resolve_upload_columns(raw: pd.DataFrame) -> pd.DataFrame:
         resolved[canonical] = found
 
     rename = {src: dst for dst, src in resolved.items() if src != dst}
+    for src, dst in rename.items():
+        if dst in df.columns and src != dst:
+            df = df.drop(columns=[dst])
     if rename:
         df = df.rename(columns=rename)
     return df
@@ -220,7 +312,7 @@ def _prepare_upload_for_sellers(raw: pd.DataFrame | None) -> pd.DataFrame | None
     df = _resolve_upload_columns(raw)
     df[COL_UPLOAD_CHECKS] = pd.to_numeric(df[COL_UPLOAD_CHECKS], errors="coerce").fillna(0)
     df[COL_UPLOAD_SHOP] = df[COL_UPLOAD_SHOP].astype(str).str.strip()
-    df[COL_UPLOAD_CASHIER] = df[COL_UPLOAD_CASHIER].astype(str).str.strip()
+    df[COL_UPLOAD_CASHIER] = df[COL_UPLOAD_CASHIER].map(_clean_cashier_label)
     df = df.loc[
         df[COL_UPLOAD_CASHIER].ne("")
         & ~df[COL_UPLOAD_CASHIER].str.casefold().str.contains("итог", na=False)
@@ -359,9 +451,14 @@ def build_sellers_no_bk_table(
     upload_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     pct_by_name = _compute_seller_pcts(upload_df) if upload_df is not None else {}
+    sellers_col = PCT_NO_BK_COLUMN_SELLERS
+    if reference_df is not None and not reference_df.empty:
+        ref_df = reference_df.copy()
+        ref_df.columns = ref_df.columns.astype(str).str.strip()
+        sellers_col = _resolve_reference_sellers_column(ref_df) or sellers_col
     return _build_pct_table(
         reference_df,
-        PCT_NO_BK_COLUMN_SELLERS,
+        sellers_col,
         COL_SELLER,
         pct_by_name,
     )
@@ -424,9 +521,11 @@ def _inject_checks_no_bk_upload_styles() -> None:
     st.markdown(
         """
         <style>
-        div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"],
-        div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileSize"],
-        div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] ~ div {
+        .checks-no-bk-block [data-testid="stCaption"],
+        .checks-no-bk-block div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"],
+        .checks-no-bk-block div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileSize"],
+        .checks-no-bk-block div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] ~ div,
+        .checks-no-bk-block div[data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] p {
             display: none !important;
         }
         </style>
@@ -483,12 +582,14 @@ def _render_checks_no_bk_block_impl(
     groups_df: pd.DataFrame | None = None,
 ) -> None:
     st.markdown("---")
+    st.markdown('<div class="checks-no-bk-block">', unsafe_allow_html=True)
     _inject_checks_no_bk_upload_styles()
 
     uploaded = st.file_uploader(
-        "Файл % без БК",
+        "Загрузите Excel",
         type=_XLSX_TYPES,
         key="checks_no_bk_uploader",
+        label_visibility="collapsed",
         help=(
             "Столбцы: Магазин, Кассир, количество чеков, Код клиента. "
             "Чек без БК — строка с пустым кодом клиента."
@@ -516,15 +617,16 @@ def _render_checks_no_bk_block_impl(
     if reference_df is not None:
         reference_df = reference_df.copy()
         reference_df.columns = reference_df.columns.astype(str).str.strip()
-        missing = [
-            col
-            for col in (
-                PCT_NO_BK_COLUMN_SELLERS,
-                PCT_NO_BK_COLUMN_SHOPS,
-                PCT_NO_BK_COLUMN_GROUPS,
-            )
-            if col not in reference_df.columns
-        ]
+        missing = []
+        sellers_col = _resolve_reference_sellers_column(reference_df)
+        required_cols = [PCT_NO_BK_COLUMN_SHOPS, PCT_NO_BK_COLUMN_GROUPS]
+        if sellers_col is None:
+            required_cols.insert(0, PCT_NO_BK_COLUMN_SELLERS)
+        else:
+            required_cols.insert(0, sellers_col)
+        for col in required_cols:
+            if col not in reference_df.columns:
+                missing.append(col)
         if missing:
             st.warning(
                 "В справочнике «%_bk» отсутствуют столбцы: "
@@ -547,7 +649,7 @@ def _render_checks_no_bk_block_impl(
     new_sellers = (
         collect_new_sellers(upload_df, reference_df) if upload_df is not None else []
     )
-    _render_new_sellers_panel(new_sellers)
+    _render_new_sellers_panel(new_sellers, file_loaded=upload_df is not None)
 
     col_sellers, col_shops, col_groups = st.columns([1, 1, 1])
 
@@ -571,3 +673,5 @@ def _render_checks_no_bk_block_impl(
             build_groups_no_bk_table(reference_df, upload_df, groups_df),
             name_column=COL_GROUP,
         )
+
+    st.markdown("</div>", unsafe_allow_html=True)
