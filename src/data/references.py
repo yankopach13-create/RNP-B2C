@@ -64,6 +64,25 @@ SCOPES = [
 _PLACEHOLDER_SPREADSHEET_ID = "REPLACE_WITH_YOUR_SPREADSHEET_ID"
 
 
+class ReferencesBatchSaveError(RuntimeError):
+    """Частичная запись пакета справочников в Google Sheets / локальные файлы."""
+
+    def __init__(
+        self,
+        saved_keys: list[str],
+        failed_key: str,
+        cause: BaseException,
+    ) -> None:
+        self.saved_keys = saved_keys
+        self.failed_key = failed_key
+        self.cause = cause
+        saved_titles = ", ".join(get_reference_title(k) for k in saved_keys) or "—"
+        super().__init__(
+            f"Ошибка при сохранении «{get_reference_title(failed_key)}»: {cause}. "
+            f"Уже сохранено: {saved_titles}."
+        )
+
+
 def _is_streamlit_cloud() -> bool:
     """Streamlit Community Cloud / Snowflake — локальные xlsx в контейнере не персистятся."""
     if os.environ.get("STREAMLIT_CLOUD") or os.environ.get("STREAMLIT_SHARING_BASE_URL"):
@@ -410,7 +429,26 @@ def _save_to_sheets(spreadsheet_id: str, worksheet_name: str, df: pd.DataFrame) 
             tail_range = f"A{n_rows + 1}:{tail_end_col}{old_row_count}"
             worksheet.batch_clear([tail_range])
 
+        _verify_sheet_row_count(worksheet, n_rows)
+
     _sheets_api_with_retry(_write)
+
+
+def _worksheet_has_data(worksheet) -> bool:
+    """Проверка «лист пуст» одной ячейкой A1 — без загрузки всего листа."""
+    cell = _sheets_api_with_retry(lambda: worksheet.acell("A1").value)
+    return bool(str(cell or "").strip())
+
+
+def _verify_sheet_row_count(worksheet, expected_rows: int) -> None:
+    """Сверка числа строк после записи (заголовок + данные)."""
+    if expected_rows < 1:
+        return
+    actual = worksheet.row_count
+    if actual < expected_rows:
+        raise RuntimeError(
+            f"Верификация не прошла: ожидалось ≥{expected_rows} строк, в листе {actual}."
+        )
 
 
 def _append_rows_to_sheets(
@@ -424,8 +462,7 @@ def _append_rows_to_sheets(
     spreadsheet = _open_spreadsheet(spreadsheet_id)
     worksheet = _sheets_api_with_retry(lambda: spreadsheet.worksheet(worksheet_name))
 
-    existing = _sheets_api_with_retry(worksheet.get_all_values)
-    if not existing:
+    if not _worksheet_has_data(worksheet):
         _save_to_sheets(spreadsheet_id, worksheet_name, df)
         return
 
@@ -435,7 +472,13 @@ def _append_rows_to_sheets(
         rows.append([_cell_value(v) for v in row])
 
     def _append() -> None:
+        before_rows = worksheet.row_count
         worksheet.append_rows(rows, value_input_option="USER_ENTERED")
+        if worksheet.row_count < before_rows + len(rows):
+            raise RuntimeError(
+                f"Верификация append: ожидалось +{len(rows)} строк, "
+                f"было {before_rows}, стало {worksheet.row_count}."
+            )
 
     _sheets_api_with_retry(_append)
 
@@ -516,11 +559,19 @@ def save_reference(key: str, df: pd.DataFrame, *, invalidate_cache: bool = True)
 
 def save_references_batch(updates: dict[str, pd.DataFrame]) -> None:
     """Сохраняет несколько справочников; кэш чтения сбрасывается один раз в конце."""
-    for key, df in updates.items():
+    for key in updates:
         if key not in _REFERENCE_META:
             raise ValueError(f"Неизвестный справочник: {key}")
-    for key, df in updates.items():
-        _save_reference_impl(key, df)
+    saved: list[str] = []
+    try:
+        for key, df in updates.items():
+            _save_reference_impl(key, df)
+            saved.append(key)
+    except Exception as exc:  # noqa: BLE001
+        clear_reference_cache()
+        if saved:
+            raise ReferencesBatchSaveError(saved, key, exc) from exc
+        raise
     clear_reference_cache()
 
 
@@ -551,3 +602,9 @@ def append_reference_rows(key: str, df: pd.DataFrame, *, invalidate_cache: bool 
 
 def clear_reference_cache() -> None:
     _load_all_references_from_sheets.clear()
+    try:
+        from features.categories import clear_category_maps_cache
+
+        clear_category_maps_cache()
+    except ImportError:
+        pass

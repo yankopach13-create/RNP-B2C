@@ -10,7 +10,6 @@ from data.loaders import AppData
 from features.categories import (
     apply_category_reference,
     apply_group_mapping,
-    product_matchable,
     reference_product_keys,
 )
 from features.reference_update import _product_dup_key, category_triple_keys_set
@@ -41,6 +40,10 @@ def collect_new_shops(sales_df: pd.DataFrame, groups_df: pd.DataFrame) -> list[s
     return new
 
 
+def _sort_u4_values(u4s: set[str]) -> tuple[str, ...]:
+    return tuple(sorted(u4s, key=lambda s: (s == "", str(s).lower())))
+
+
 def collect_unmatched_products(
     sales_df: pd.DataFrame,
     category_df: Optional[pd.DataFrame],
@@ -53,62 +56,56 @@ def collect_unmatched_products(
     if "Товар ур.2" not in sales_df.columns or "Товар ур.3" not in sales_df.columns:
         return []
 
-    def _row_triple(row) -> tuple[str, str, str]:
-        u2 = str(row.get("Товар ур.2", "") or "").strip()
-        u3 = str(row.get("Товар ур.3", "") or "").strip()
-        u4 = str(row.get("Товар ур.4", "") or "").strip()
-        return (u2, u3, u4)
+    work = pd.DataFrame(index=sales_df.index)
+    work["u2"] = sales_df["Товар ур.2"].astype(str).str.strip()
+    work["u3"] = sales_df["Товар ур.3"].astype(str).str.strip()
+    if "Товар ур.4" in sales_df.columns:
+        work["u4"] = sales_df["Товар ур.4"].astype(str).str.strip()
+    else:
+        work["u4"] = ""
+    if "Категория" in sales_df.columns:
+        work["cat"] = sales_df["Категория"].astype(str).str.strip()
+    else:
+        work["cat"] = ""
 
-    def _pair_key(u2: str, u3: str) -> tuple[str, str]:
-        return (u2.lower(), u3.lower())
+    work = work.loc[work["u2"].ne("") & work["u3"].ne("")]
+    if work.empty:
+        return []
 
-    def _sort_u4(u4s: set[str]) -> tuple[str, ...]:
-        return tuple(sorted(u4s, key=lambda s: (s == "", str(s).lower())))
-
-    # pk -> (display u2, display u3, set of u4)
-    buckets: dict[tuple[str, str], tuple[str, str, set[str]]] = {}
-    order: list[tuple[str, str]] = []
-
-    def _add_u4(u2: str, u3: str, u4: str) -> None:
-        pk = _pair_key(u2, u3)
-        if pk not in buckets:
-            buckets[pk] = (u2, u3, set())
-            order.append(pk)
-        buckets[pk][2].add(u4)
+    work["u2_lower"] = work["u2"].str.lower()
+    work["u3_lower"] = work["u3"].str.lower()
+    work["triple_k"] = (
+        work["u2_lower"] + "|||" + work["u3_lower"] + "|||" + work["u4"].str.lower()
+    )
 
     if category_df is None:
-        for _, row in sales_df.iterrows():
-            u2, u3, u4 = _row_triple(row)
-            if not u2 or not u3:
-                continue
-            _add_u4(u2, u3, u4)
+        flagged = work
+        ref_filter: set[str] = set()
     else:
         keys = reference_product_keys(category_df)
         ref_triples = category_triple_keys_set(category_df)
-        for _, row in sales_df.iterrows():
-            u2, u3, u4 = _row_triple(row)
-            if not u2 or not u3:
-                continue
-            cat = str(row.get("Категория", "") or "").strip()
-            triple_k = _product_dup_key(u2, u3, u4)
-            need_raw = (not product_matchable(u2, u3, u4, keys)) or (cat == "Прочие товары")
-            need = need_raw and triple_k not in ref_triples
-            if not need:
-                continue
-            _add_u4(u2, u3, u4)
+        key4 = work["u2_lower"] + "||" + work["u3_lower"] + "||" + work["u4"].str.lower()
+        key3 = work["u2_lower"] + "||" + work["u3_lower"]
+        key2 = work["u2_lower"]
+        matchable = key4.isin(keys) | key3.isin(keys) | key2.isin(keys)
+        need_raw = (~matchable) | (work["cat"] == "Прочие товары")
+        flagged = work.loc[need_raw & (~work["triple_k"].isin(ref_triples))]
+        ref_filter = ref_triples
+
+    if flagged.empty:
+        return []
 
     result: list[UnmatchedProductGroup] = []
-    ref_filter = category_triple_keys_set(category_df) if category_df is not None else set()
-    for pk in order:
-        u2, u3, u4s = buckets[pk][0], buckets[pk][1], buckets[pk][2]
+    for _, group in flagged.groupby(["u2_lower", "u3_lower"], sort=False):
+        u2 = str(group["u2"].iloc[0])
+        u3 = str(group["u3"].iloc[0])
+        u4s = _sort_u4_values(set(group["u4"].tolist()))
         if ref_filter:
-            filtered = tuple(
-                u for u in _sort_u4(u4s) if _product_dup_key(u2, u3, u) not in ref_filter
+            u4s = tuple(
+                u for u in u4s if _product_dup_key(u2, u3, u) not in ref_filter
             )
-        else:
-            filtered = _sort_u4(u4s)
-        if filtered:
-            result.append((u2, u3, filtered))
+        if u4s:
+            result.append((u2, u3, u4s))
     return result
 
 

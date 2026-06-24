@@ -110,6 +110,10 @@ def render_upload_panel() -> UploadedFiles:
 
         with col_focus:
             st.subheader("Категории в фокусе")
+            st.caption(
+                "Фокусные позиции в отчёте берутся из справочника focus (Google Sheets). "
+                "Загрузка файлов ниже пока не используется."
+            )
             st.markdown(
                 "<p class='upload-mini-title'>Кальянная продукция</p>",
                 unsafe_allow_html=True,

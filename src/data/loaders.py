@@ -109,11 +109,14 @@ def _coerce_numeric_columns(df: pd.DataFrame, columns: list[str]) -> None:
         df[col] = pd.to_numeric(s, errors="coerce")
 
 
-def _load_categories_reference() -> Optional[pd.DataFrame]:
+def _load_categories_from_batch(
+    batch: dict[str, pd.DataFrame],
+) -> Optional[pd.DataFrame]:
     refs = _references()
-    categories_df = _safe_load_reference(refs.REF_CATEGORIES)
+    categories_df = batch.get(refs.REF_CATEGORIES)
     if categories_df is None:
         return None
+    categories_df = categories_df.copy()
     categories_df.columns = categories_df.columns.str.strip()
     if not REQUIRED_CATEGORY_COLS.issubset(set(categories_df.columns)):
         raise ValueError(
@@ -123,8 +126,64 @@ def _load_categories_reference() -> Optional[pd.DataFrame]:
     return categories_df
 
 
-def _load_focus_reference() -> Optional[pd.DataFrame]:
-    return _safe_load_reference(_references().REF_FOCUS)
+def _load_reference_batch() -> dict[str, pd.DataFrame]:
+    """Все справочники за один batchGet / один проход кэша."""
+    refs = _references()
+    keys = [
+        refs.REF_SHOP_GROUPS,
+        refs.REF_CATEGORIES,
+        refs.REF_GROUPS_ORDER,
+        refs.REF_CATEGORY_ORDER,
+        refs.REF_FOCUS,
+    ]
+    try:
+        return refs.load_all_references(keys)
+    except FileNotFoundError:
+        batch: dict[str, pd.DataFrame] = {}
+        for key in keys:
+            df = _safe_load_reference(key)
+            if df is not None:
+                batch[key] = df
+        return batch
+
+
+def _groups_order_from_batch(
+    batch: dict[str, pd.DataFrame],
+) -> tuple[Optional[list[str]], Optional[list[str]]]:
+    refs = _references()
+    order_df = batch.get(refs.REF_GROUPS_ORDER)
+    if order_df is None:
+        return None, None
+    order_df = order_df.copy()
+    order_df.columns = order_df.columns.str.strip()
+    groups_col = _resolve_groups_order_column(order_df)
+    groups_order = _column_names_from_reference(order_df, groups_col)
+    shops_col = _resolve_shops_order_column(order_df)
+    shops_order = (
+        _column_names_from_reference(order_df, shops_col) if shops_col else None
+    )
+    return groups_order, shops_order
+
+
+def _category_order_from_batch(
+    batch: dict[str, pd.DataFrame],
+) -> tuple[Optional[list[str]], Optional[list[str]]]:
+    refs = _references()
+    order_df = batch.get(refs.REF_CATEGORY_ORDER)
+    if order_df is None:
+        return None, None
+    order_df = order_df.copy()
+    order_df.columns = order_df.columns.str.strip()
+    if CATEGORY_ORDER_COLUMN_RNP not in order_df.columns:
+        raise ValueError(
+            f"В справочнике порядка категорий ({refs.get_reference_label(refs.REF_CATEGORY_ORDER)}) "
+            f"отсутствует столбец «{CATEGORY_ORDER_COLUMN_RNP}»."
+        )
+    rnp = _column_names_from_reference(order_df, CATEGORY_ORDER_COLUMN_RNP)
+    general = None
+    if CATEGORY_ORDER_COLUMN_GENERAL in order_df.columns:
+        general = _column_names_from_reference(order_df, CATEGORY_ORDER_COLUMN_GENERAL)
+    return rnp, general
 
 
 def _column_names_from_reference(df: pd.DataFrame, column: str) -> list[str]:
@@ -156,36 +215,14 @@ def _resolve_shops_order_column(order_df: pd.DataFrame) -> str | None:
 
 def _load_groups_order_data() -> tuple[Optional[list[str]], Optional[list[str]]]:
     """Порядок групп РНП и магазинов — один запрос к справочнику groups_order."""
-    order_df = _safe_load_reference(_references().REF_GROUPS_ORDER)
-    if order_df is None:
-        return None, None
-    order_df.columns = order_df.columns.str.strip()
-    groups_col = _resolve_groups_order_column(order_df)
-    groups_order = _column_names_from_reference(order_df, groups_col)
-    shops_col = _resolve_shops_order_column(order_df)
-    shops_order = (
-        _column_names_from_reference(order_df, shops_col) if shops_col else None
-    )
-    return groups_order, shops_order
+    batch = _load_reference_batch()
+    return _groups_order_from_batch(batch)
 
 
 def _load_category_order() -> tuple[Optional[list[str]], Optional[list[str]]]:
     """category_order: «РНП» (обяз.), «Общий РНП» (опц.). Возвращает (rnp, general)."""
-    refs = _references()
-    order_df = _safe_load_reference(refs.REF_CATEGORY_ORDER)
-    if order_df is None:
-        return None, None
-    order_df.columns = order_df.columns.str.strip()
-    if CATEGORY_ORDER_COLUMN_RNP not in order_df.columns:
-        raise ValueError(
-            f"В справочнике порядка категорий ({refs.get_reference_label(refs.REF_CATEGORY_ORDER)}) "
-            f"отсутствует столбец «{CATEGORY_ORDER_COLUMN_RNP}»."
-        )
-    rnp = _column_names_from_reference(order_df, CATEGORY_ORDER_COLUMN_RNP)
-    general = None
-    if CATEGORY_ORDER_COLUMN_GENERAL in order_df.columns:
-        general = _column_names_from_reference(order_df, CATEGORY_ORDER_COLUMN_GENERAL)
-    return rnp, general
+    batch = _load_reference_batch()
+    return _category_order_from_batch(batch)
 
 
 def load_all_data(files) -> AppData:
@@ -199,15 +236,22 @@ def load_all_data(files) -> AppData:
             ["Продажи с НДС", "Маржа", "Количество", "Неделя"],
         )
 
-    groups_df = _safe_load_reference(_references().REF_SHOP_GROUPS)
+    ref_batch = _load_reference_batch()
+    refs = _references()
+
+    groups_df = ref_batch.get(refs.REF_SHOP_GROUPS)
     if groups_df is not None:
+        groups_df = groups_df.copy()
         groups_df.columns = groups_df.columns.str.strip()
-    categories_df = _load_categories_reference()
-    focus_df = _load_focus_reference()
+
+    categories_df = _load_categories_from_batch(ref_batch)
+    focus_df = ref_batch.get(refs.REF_FOCUS)
     if focus_df is not None:
+        focus_df = focus_df.copy()
         focus_df.columns = focus_df.columns.str.strip()
-    groups_order_rnp, shops_order = _load_groups_order_data()
-    category_order_rnp, category_order_general = _load_category_order()
+
+    groups_order_rnp, shops_order = _groups_order_from_batch(ref_batch)
+    category_order_rnp, category_order_general = _category_order_from_batch(ref_batch)
 
     lfl_df = None
     if getattr(files, "lfl", None):

@@ -37,12 +37,14 @@ from features.excel_export import rnp_b2c_excel_filename
 from features.ai_report import render_ai_report_b2c
 from features.general_rnp import render_general_rnp_b2c
 from ui.data_session import (
+    excel_is_prepared,
     get_cached_excel_bytes,
     get_cached_turnover_table,
     get_df_report_cached,
     get_stored_app_data,
     get_stored_prepared,
     load_and_store_app_data,
+    prepare_excel_download,
     should_reload_data,
 )
 from ui.reference_quick_add import render_quick_reference_update
@@ -157,7 +159,17 @@ def _render_rnp_b2c_header(
             st.rerun()
     with col_download:
         report_week = week_config.report_week if week_config else None
-        excel_bytes = get_cached_excel_bytes(data, prepared, week_config)
+        excel_ready = excel_is_prepared(week_config)
+        if not excel_ready:
+            if st.button(
+                "Подготовить Excel",
+                key="prepare_rnp_b2c_excel",
+                type="secondary",
+                use_container_width=True,
+            ):
+                prepare_excel_download(data, prepared, week_config)
+                st.rerun()
+        excel_bytes = get_cached_excel_bytes(data, prepared, week_config) if excel_ready else None
         st.download_button(
             label="Скачать РНП отчёт в Excel",
             data=excel_bytes or b"",
@@ -165,8 +177,9 @@ def _render_rnp_b2c_header(
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="secondary",
             use_container_width=True,
-            disabled=excel_bytes is None,
+            disabled=not excel_ready,
             key="download_rnp_b2c_excel",
+            help=None if excel_ready else "Сначала нажмите «Подготовить Excel».",
         )
 
     if st.session_state.show_rnp_b2c_block:

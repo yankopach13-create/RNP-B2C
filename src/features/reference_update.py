@@ -21,9 +21,11 @@ from data.references import (
     REF_CATEGORY_ORDER,
     REF_GROUPS_ORDER,
     REF_SHOP_GROUPS,
+    ReferencesBatchSaveError,
     append_reference_rows,
     get_reference_label,
     get_reference_storage_hint,
+    get_reference_title,
     load_all_references,
     load_reference,
     reference_exists,
@@ -505,6 +507,11 @@ def apply_reference_updates_batch(
     updates = {key: refs[key] for key in dirty}
     try:
         save_references_batch(updates)
+    except ReferencesBatchSaveError as exc:
+        saved = ", ".join(get_reference_title(k) for k in exc.saved_keys)
+        return False, messages + [
+            f"Частичное сохранение: записано ({saved}). {exc}"
+        ]
     except Exception as exc:  # noqa: BLE001
         return False, messages + [f"Не удалось сохранить справочники: {exc}"]
 
@@ -568,7 +575,8 @@ def add_shop_to_reference(
                 append_reference_rows(REF_GROUPS_ORDER, order_df.tail(1))
             except Exception as exc:  # noqa: BLE001
                 return False, (
-                    f"Не удалось записать в {get_reference_storage_hint(REF_GROUPS_ORDER)}: {exc}"
+                    f"Магазин «{shop_name}» записан в {get_reference_storage_hint(REF_SHOP_GROUPS)}, "
+                    f"но не удалось обновить порядок магазинов: {exc}"
                 )
     else:
         ok, err = _try_save_reference(REF_SHOP_GROUPS, df)
@@ -611,13 +619,10 @@ def category_triple_keys_set(category_df: pd.DataFrame) -> set[str]:
     df.columns = df.columns.str.strip()
     if "Товар ур.4" not in df.columns:
         df["Товар ур.4"] = ""
-    out: set[str] = set()
-    for _, row in df.iterrows():
-        u2 = str(row.get("Товар ур.2", "") or "").strip()
-        u3 = str(row.get("Товар ур.3", "") or "").strip()
-        u4 = str(row.get("Товар ур.4", "") or "").strip()
-        out.add(_product_dup_key(u2, u3, u4))
-    return out
+    u2 = df["Товар ур.2"].astype(str).str.strip().str.lower()
+    u3 = df["Товар ур.3"].astype(str).str.strip().str.lower()
+    u4 = df["Товар ур.4"].astype(str).str.strip().str.lower()
+    return set((u2 + "|||" + u3 + "|||" + u4).tolist())
 
 
 def insert_categories_to_order(

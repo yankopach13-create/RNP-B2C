@@ -9,6 +9,13 @@ from config.constants import CATEGORY_COLUMN_GENERAL, CATEGORY_COLUMN_RNP
 # Разделитель пары «категория РНП / категория Общего РНП» в одной ячейке справочника.
 CATEGORY_PAIR_SEPARATOR = "/"
 
+_LEVEL_MAPS_CACHE: dict[int, tuple[dict, dict, dict]] = {}
+
+
+def clear_category_maps_cache() -> None:
+    """Сброс кэша карт категорий (после обновления справочника)."""
+    _LEVEL_MAPS_CACHE.clear()
+
 
 def _norm_cell(value) -> str:
     if pd.isna(value):
@@ -77,24 +84,31 @@ def unique_category_pairs(category_df: pd.DataFrame) -> list[tuple[str, str, str
         return []
 
     has_general_col = CATEGORY_COLUMN_GENERAL in df.columns
+    rnp_col = df[CATEGORY_COLUMN_RNP].map(_norm_cell)
+    if has_general_col:
+        gen_col = df[CATEGORY_COLUMN_GENERAL].map(_norm_cell)
+    else:
+        gen_col = pd.Series("", index=df.index)
+
+    pairs_df = pd.DataFrame({"rnp_raw": rnp_col, "gen_override": gen_col})
+    pairs_df = pairs_df.loc[pairs_df["rnp_raw"].ne("")]
+    if pairs_df.empty:
+        return []
+
     seen: set[tuple[str, str]] = set()
     out: list[tuple[str, str, str]] = []
-
-    for _, row in df.iterrows():
-        override = (
-            _norm_cell(row.get(CATEGORY_COLUMN_GENERAL)) if has_general_col else ""
-        )
-        rnp, general = parse_category_pair(
-            row.get(CATEGORY_COLUMN_RNP, ""), general_override=override
-        )
+    for raw, override in zip(
+        pairs_df["rnp_raw"].tolist(),
+        pairs_df["gen_override"].tolist(),
+    ):
+        rnp, general = parse_category_pair(raw, general_override=override)
         if not rnp:
             continue
         key = (rnp.casefold(), general.casefold())
         if key in seen:
             continue
         seen.add(key)
-        stored = format_category_pair(rnp, general)
-        out.append((rnp, general, stored))
+        out.append((rnp, general, format_category_pair(rnp, general)))
 
     return out
 
@@ -141,9 +155,20 @@ def _build_level_maps(category_df: pd.DataFrame):
     return map4, map3, map2
 
 
+def get_level_maps(category_df: pd.DataFrame) -> tuple[dict, dict, dict]:
+    """Кэшированные карты уровней товаров для одного датафрейма справочника."""
+    cache_key = id(category_df)
+    cached = _LEVEL_MAPS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    maps = _build_level_maps(category_df)
+    _LEVEL_MAPS_CACHE[cache_key] = maps
+    return maps
+
+
 def reference_product_keys(category_df: pd.DataFrame) -> set[str]:
     """Все ключи товара из справочника (ур.4, ур.3, ур.2), по которым возможно совпадение."""
-    m4, m3, m2 = _build_level_maps(category_df)
+    m4, m3, m2 = get_level_maps(category_df)
     return set(m4) | set(m3) | set(m2)
 
 
@@ -192,7 +217,7 @@ def apply_category_reference(
             _norm_cell
         )
 
-    map4, map3, map2 = _build_level_maps(category_df)
+    map4, map3, map2 = get_level_maps(category_df)
 
     if "Товар ур.2" not in df_sales.columns or "Товар ур.3" not in df_sales.columns:
         raise ValueError(
