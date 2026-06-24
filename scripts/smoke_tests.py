@@ -25,6 +25,7 @@ from features.categories import (  # noqa: E402
     unique_category_pairs,
 )
 from features.data_prep import collect_new_shops, collect_unmatched_products  # noqa: E402
+from features.hookah_products import build_hookah_products_table  # noqa: E402
 from features.reference_update import (  # noqa: E402
     _mutate_categories_add_product,
     _mutate_shop_groups,
@@ -120,6 +121,36 @@ def test_mutate_shop_groups() -> None:
     _assert(len(out) == 1, "one row")
 
 
+def test_hookah_products_table() -> None:
+    sales = pd.DataFrame(
+        {
+            "Товар ур.2": [
+                "Бестабачная Смесь",
+                "Уголь для кальяна",
+                "Прочее",
+            ],
+            "Количество": [10, 5, 100],
+            "Продажи с НДС": [1000, 500, 10_000],
+            "Неделя": [10, 10, 10],
+        }
+    )
+    hookah = pd.DataFrame(
+        {
+            "Магазин": ["Shop A", "Итого", "Итого"],
+            "количество чеков": [50, 100, 200],
+            "количество товара": [30, 60, 120],
+        }
+    )
+    groups = pd.DataFrame({"Магазин": ["Shop A"], "Группа": ["Восток"]})
+    table = build_hookah_products_table(sales, hookah, groups, report_week=10)
+    values = dict(zip(table["Метрика"], table["Значение"]))
+    _assert(values["1.1 Бестабачная Смесь"] == "10 / 1 000", "bks sales")
+    _assert(values["1.2 Уголь для кальяна"] == "5 / 500", "coal sales")
+    _assert(values["Кол-во чеков всей категории"] == "200", "category checks")
+    _assert(values["Восток"] == "0,600", "east nesting")
+    _assert(values["Юг"] == "", "south nesting empty")
+
+
 def test_mutate_categories_add_product() -> None:
     df = pd.DataFrame(
         columns=[
@@ -149,6 +180,7 @@ OFFLINE_TESTS = [
     test_collect_new_shops,
     test_collect_unmatched_products,
     test_category_maps_cache,
+    test_hookah_products_table,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,
 ]

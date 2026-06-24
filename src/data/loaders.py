@@ -30,6 +30,8 @@ class AppData:
     lfl: Optional[pd.DataFrame]
     turnover_week: Optional[pd.DataFrame]
     turnover_90: Optional[pd.DataFrame]
+    focus_hookah: Optional[pd.DataFrame]
+    focus_fill_free: Optional[pd.DataFrame]
     groups_order_rnp: Optional[list[str]]
     category_order_rnp: Optional[list[str]]
     category_order_general: Optional[list[str]]
@@ -310,6 +312,26 @@ def load_all_data(files) -> AppData:
             ["Неделя", "Продажи"],
         )
 
+    focus_hookah_df = (
+        _read_excel(files.focus_hookah, label="Кальянная продукция")
+        if getattr(files, "focus_hookah", None)
+        else None
+    )
+    if focus_hookah_df is not None:
+        focus_hookah_df.columns = focus_hookah_df.columns.str.strip()
+        _coerce_numeric_columns(
+            focus_hookah_df,
+            ["количество чеков", "количество товара", "Количество чеков", "Количество товара"],
+        )
+
+    focus_fill_free_df = (
+        _read_excel(files.focus_fill_free, label="Fill free")
+        if getattr(files, "focus_fill_free", None)
+        else None
+    )
+    if focus_fill_free_df is not None:
+        focus_fill_free_df.columns = focus_fill_free_df.columns.str.strip()
+
     return AppData(
         sales=sales_df,
         groups=groups_df,
@@ -320,6 +342,8 @@ def load_all_data(files) -> AppData:
         lfl=lfl_df,
         turnover_week=turnover_week_df,
         turnover_90=turnover_90_df,
+        focus_hookah=focus_hookah_df,
+        focus_fill_free=focus_fill_free_df,
         groups_order_rnp=groups_order_rnp,
         category_order_rnp=category_order_rnp,
         category_order_general=category_order_general,

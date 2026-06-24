@@ -110,25 +110,15 @@ def render_upload_panel() -> UploadedFiles:
 
         with col_focus:
             st.subheader("Категории в фокусе")
-            st.markdown(
-                "<p class='upload-mini-title'>Кальянная продукция</p>",
-                unsafe_allow_html=True,
-            )
             focus_hookah_file = st.file_uploader(
                 "Кальянная продукция",
                 type=_XLSX_TYPES,
                 key="focus_hookah_uploader",
-                label_visibility="collapsed",
-            )
-            st.markdown(
-                "<p class='upload-mini-title'>Fill free</p>",
-                unsafe_allow_html=True,
             )
             focus_fill_free_file = st.file_uploader(
                 "Fill free",
                 type=_XLSX_TYPES,
                 key="focus_fill_free_uploader",
-                label_visibility="collapsed",
             )
 
         _inject_upload_page_styles()

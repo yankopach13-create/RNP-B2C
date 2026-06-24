@@ -596,11 +596,18 @@ def _render_shop_economy_and_lfl(
     excise_report_qty: float = 0.0,
 ) -> None:
     """Экономика магазинов, факторный анализ и кальянная продукция."""
+    hookah_kwargs = {
+        "sales_df": sales_df,
+        "focus_hookah": data.focus_hookah,
+        "groups_df": data.groups,
+        "report_week": report_week,
+        "embedded": True,
+    }
     has_shop = sales_df is not None and not sales_df.empty
     has_lfl = data.lfl is not None
     if not has_shop and not has_lfl:
         st.divider()
-        render_hookah_products_block(embedded=True)
+        render_hookah_products_block(**hookah_kwargs)
         return
 
     st.divider()
@@ -653,7 +660,7 @@ def _render_shop_economy_and_lfl(
             )
 
     with col_hookah:
-        render_hookah_products_block(embedded=True)
+        render_hookah_products_block(**hookah_kwargs)
 
 
 if __name__ == "__main__":
