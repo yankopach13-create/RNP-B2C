@@ -24,6 +24,7 @@ from features.data_prep import (
 )
 from features.clients import render_client_block
 from features.lfl import render_lfl_block
+from features.fill_free_products import render_fill_free_products_block
 from features.hookah_products import render_hookah_products_block
 from features.metrics import (
     render_financial_metrics_table,
@@ -630,7 +631,7 @@ def _render_shop_economy_and_lfl(
     excise_lfl_qty: float = 0.0,
     excise_report_qty: float = 0.0,
 ) -> None:
-    """Экономика магазинов, факторный анализ и кальянная продукция."""
+    """Экономика магазинов, факторный анализ, кальянная продукция и Fill free."""
     hookah_kwargs = {
         "sales_df": sales_df if sales_df is not None else data.sales,
         "focus_hookah": data.focus_hookah,
@@ -638,17 +639,25 @@ def _render_shop_economy_and_lfl(
         "report_week": None if sales_df is not None else report_week,
         "embedded": True,
     }
+    fill_free_kwargs = {
+        "focus_fill_free": data.focus_fill_free,
+        "embedded": True,
+    }
     has_shop = sales_df is not None and not sales_df.empty
     has_lfl = data.lfl is not None
     if not has_shop and not has_lfl:
         st.divider()
-        render_hookah_products_block(**hookah_kwargs)
+        col_hookah, col_fill_free = st.columns(2)
+        with col_hookah:
+            render_hookah_products_block(**hookah_kwargs)
+        with col_fill_free:
+            render_fill_free_products_block(**fill_free_kwargs)
         return
 
     st.divider()
-    col_shop, col_lfl, col_hookah = st.columns([0.72, 1.45, 0.82])
+    col_left, col_lfl = st.columns([1.54, 1.45])
 
-    with col_shop:
+    with col_left:
         st.markdown("**Экономика магазинов**")
         if has_shop:
             shop_table = _build_shop_economy_table_simple(
@@ -675,6 +684,12 @@ def _render_shop_economy_and_lfl(
         else:
             st.info("Нет данных по магазинам.")
 
+        col_hookah, col_fill_free = st.columns(2)
+        with col_hookah:
+            render_hookah_products_block(**hookah_kwargs)
+        with col_fill_free:
+            render_fill_free_products_block(**fill_free_kwargs)
+
     with col_lfl:
         if has_lfl:
             render_lfl_block(
@@ -693,9 +708,6 @@ def _render_shop_economy_and_lfl(
                 "Нет данных для факторного анализа "
                 "(загрузите продажи с колонкой «Неделя» или отдельный файл)."
             )
-
-    with col_hookah:
-        render_hookah_products_block(**hookah_kwargs)
 
 
 if __name__ == "__main__":
