@@ -6,7 +6,39 @@ from features.excise_liquid import (
     CATEGORY_LIQUID_25ML,
     excise_margin_deduction,
 )
+from features.metrics import (
+    FINANCIAL_TABLE_HEADER_HEIGHT_PX,
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+)
 from features.reference_orders import resolve_categories_rnp
+
+LFL_VISIBLE_ROWS = 4
+LFL_CATEGORY_COL_WIDTH_PX = 200
+LFL_METRIC_COL_WIDTH_PX = 112
+
+
+def _lfl_table_height() -> int:
+    return (
+        FINANCIAL_TABLE_HEADER_HEIGHT_PX
+        + LFL_VISIBLE_ROWS * FINANCIAL_TABLE_ROW_HEIGHT_PX
+    )
+
+
+def _lfl_column_config(table: pd.DataFrame) -> dict:
+    config = {
+        "Категория": st.column_config.TextColumn(
+            "Категория",
+            width=LFL_CATEGORY_COL_WIDTH_PX,
+        ),
+    }
+    for column in table.columns:
+        if column == "Категория":
+            continue
+        config[column] = st.column_config.TextColumn(
+            column,
+            width=LFL_METRIC_COL_WIDTH_PX,
+        )
+    return config
 
 
 def render_lfl_block(
@@ -50,7 +82,14 @@ def render_lfl_block(
             st.info("Нет данных для факторного анализа.")
         return
 
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    st.dataframe(
+        table,
+        use_container_width=True,
+        hide_index=True,
+        height=_lfl_table_height(),
+        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
+        column_config=_lfl_column_config(table),
+    )
 
 
 def build_lfl_factor_table(

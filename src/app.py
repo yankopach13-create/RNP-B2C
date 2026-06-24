@@ -32,6 +32,8 @@ from features.metrics import (
     _build_shop_economy_table,
     _can_build_financial_metrics,
     _fmt_fin_int,
+    FINANCIAL_TABLE_HEADER_HEIGHT_PX,
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
 )
 from features.excise_liquid import WeekCalculationConfig, excise_margin_deduction
 from features.excel_export import rnp_b2c_excel_filename
@@ -53,8 +55,9 @@ from ui.upload_panel import UploadedFiles, render_upload_panel
 
 st.set_page_config(page_title="B2C РНП", page_icon="📊", layout="wide")
 
-SHOP_ECONOMY_SALES_COL_WIDTH_PX = 84
-SHOP_ECONOMY_SHOP_COL_WIDTH_PX = 190
+SHOP_ECONOMY_SALES_COL_WIDTH_PX = 70
+SHOP_ECONOMY_SHOP_COL_WIDTH_PX = 165
+SHOP_ECONOMY_VISIBLE_ROWS = 4
 
 
 def main():
@@ -655,7 +658,7 @@ def _render_shop_economy_and_lfl(
         return
 
     st.divider()
-    col_left, col_lfl = st.columns([1.54, 1.45])
+    col_left, col_lfl = st.columns([1.28, 1.82])
 
     with col_left:
         st.markdown("**Экономика магазинов**")
@@ -668,6 +671,11 @@ def _render_shop_economy_and_lfl(
                     shop_table.reset_index(),
                     use_container_width=True,
                     hide_index=True,
+                    height=(
+                        FINANCIAL_TABLE_HEADER_HEIGHT_PX
+                        + SHOP_ECONOMY_VISIBLE_ROWS * FINANCIAL_TABLE_ROW_HEIGHT_PX
+                    ),
+                    row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
                     column_config={
                         "Магазин": st.column_config.TextColumn(
                             "Магазин",
