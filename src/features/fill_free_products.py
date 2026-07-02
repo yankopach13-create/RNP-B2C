@@ -12,7 +12,10 @@ from features.hookah_products import (
     HOOKAH_GROUP_LABELS,
     HOOKAH_GROUP_LABEL_TO_REF,
 )
-from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX, compact_dataframe_height
+from features.table_layout import (
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    compact_dataframe_height,
+)
 
 COL_GROUP = "Группа"
 COL_CUMULATIVE = "Накопительно"

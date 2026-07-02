@@ -6,7 +6,7 @@ from features.excise_liquid import (
     CATEGORY_LIQUID_25ML,
     excise_margin_deduction,
 )
-from features.metrics import (
+from features.table_layout import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     compact_dataframe_height,
 )

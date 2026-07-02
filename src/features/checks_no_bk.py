@@ -547,7 +547,7 @@ def _render_order_table(
         )
         return
 
-    from features.metrics import compact_dataframe_height
+    from features.table_layout import compact_dataframe_height
 
     st.dataframe(
         table,

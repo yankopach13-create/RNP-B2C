@@ -24,6 +24,13 @@ from features.reference_orders import (
     resolve_groups_order,
     resolve_shops_order,
 )
+from features.table_layout import (
+    FINANCIAL_TABLE_HEADER_HEIGHT_PX,
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    FINANCIAL_TABLE_VISIBLE_ROWS,
+    compact_dataframe_height,
+    compact_dataframe_kwargs,
+)
 from features.turnover import prepare_turnover_table
 
 
@@ -174,10 +181,6 @@ def render_group_sections(df: pd.DataFrame):
 
 VAT_NET_DIVISOR = 1.2  # выручка без НДС при ставке НДС 20%
 
-# Высота таблиц на листе: видно 5 строк данных + прокрутка; fullscreen — все строки.
-FINANCIAL_TABLE_VISIBLE_ROWS = 5
-FINANCIAL_TABLE_ROW_HEIGHT_PX = 35
-FINANCIAL_TABLE_HEADER_HEIGHT_PX = 38
 # Одинаковая ширина столбцов в «Общие» и «Подразделения»
 FINANCIAL_TABLE_COL_GROUP_PX = 200
 FINANCIAL_TABLE_COL_METRIC_PX = 220
@@ -189,26 +192,7 @@ CATEGORY_SUBDIVISION_SPACER_ROWS = 3
 
 
 def _financial_dataframe_height(visible_rows: int = FINANCIAL_TABLE_VISIBLE_ROWS) -> int:
-    return FINANCIAL_TABLE_HEADER_HEIGHT_PX + visible_rows * FINANCIAL_TABLE_ROW_HEIGHT_PX
-
-
-def compact_dataframe_height(
-    visible_rows: int = FINANCIAL_TABLE_VISIBLE_ROWS,
-) -> int:
-    """Компактная высота таблицы на странице (без полноэкранного режима)."""
-    return _financial_dataframe_height(visible_rows)
-
-
-def compact_dataframe_kwargs(**extra) -> dict:
-    """Общие параметры st.dataframe: компактно на листе, полный список в fullscreen."""
-    kwargs = {
-        "use_container_width": True,
-        "hide_index": True,
-        "height": compact_dataframe_height(),
-        "row_height": FINANCIAL_TABLE_ROW_HEIGHT_PX,
-    }
-    kwargs.update(extra)
-    return kwargs
+    return compact_dataframe_height(visible_rows)
 
 
 def _full_table_height(row_count: int) -> int:

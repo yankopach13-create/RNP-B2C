@@ -26,14 +26,16 @@ from features.clients import render_client_block
 from features.lfl import build_lfl_factor_table, render_lfl_block
 from features.fill_free_products import render_fill_free_products_block
 from features.hookah_products import render_hookah_products_block
+from features.table_layout import (
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    compact_dataframe_height,
+)
 from features.metrics import (
     render_financial_metrics_table,
     render_global_metrics,
     _build_shop_economy_table,
     _can_build_financial_metrics,
     _fmt_fin_int,
-    compact_dataframe_height,
-    FINANCIAL_TABLE_ROW_HEIGHT_PX,
 )
 from features.excise_liquid import WeekCalculationConfig, excise_margin_deduction
 from features.excel_export import rnp_b2c_excel_filename

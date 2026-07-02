@@ -8,11 +8,13 @@ import pandas as pd
 import streamlit as st
 
 from features.data_prep import filter_sales_by_report_week
-from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX, compact_dataframe_height
+from features.table_layout import (
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    compact_dataframe_height,
+)
 
 COL_METRIC = "Метрика"
 COL_VALUE = "Значение"
-from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX, compact_dataframe_height
 HOOKAH_TABLE_ROW_HEIGHT_PX = 35
 
 COL_SHOP = "Магазин"
