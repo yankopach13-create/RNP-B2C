@@ -7,6 +7,7 @@ REFERENCE_DIR = _SRC_ROOT / "data" / "reference"
 REFERENCE_GROUPS_FILENAMES = ("shop_groups.xlsx", "groups.xlsx")
 REFERENCE_CATEGORIES_FILENAME = "categories.xlsx"
 REFERENCE_FOCUS_FILENAME = "focus.xlsx"
+REFERENCE_TURNOVER_CATEGORIES_FILENAMES = ("turnover.xlsx",)
 REFERENCE_CATEGORY_ORDER_FILENAMES = ("category_order.xlsx", "category_order.xls")
 REFERENCE_GROUPS_ORDER_FILENAMES = ("groups_order.xlsx", "groups_order.xls")
 REFERENCE_PCT_NO_BK_FILENAMES = ("pct_no_bk.xlsx",)
@@ -19,6 +20,9 @@ PCT_NO_BK_COLUMN_GROUPS = "Порядок групп"
 # Справочник порядка категорий (category_order.xlsx)
 CATEGORY_ORDER_COLUMN_RNP = "РНП"
 CATEGORY_ORDER_COLUMN_GENERAL = "Общий РНП"
+
+# Справочник категорий для блока оборачиваемости (лист turnover)
+TURNOVER_CATEGORIES_COLUMN = "Список"
 
 # Справочник порядка групп РНП (groups_order.xlsx)
 GROUPS_ORDER_COLUMN_CANDIDATES = ("РНП", "Группа")

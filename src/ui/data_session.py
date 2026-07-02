@@ -142,6 +142,7 @@ def _warm_turnover_cache(data: AppData):
         data.turnover_week,
         data.categories,
         data.category_order_rnp,
+        getattr(data, "turnover_categories", None),
     )
     st.session_state[TURNOVER_TABLE_KEY] = table
     st.session_state[TURNOVER_CACHE_VERSION_KEY] = version

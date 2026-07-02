@@ -433,6 +433,7 @@ def _render_rnp_b2c_results(
             category_order_rnp=data.category_order_rnp,
             groups_order_rnp=data.groups_order_rnp,
             focus_df=data.focus,
+            turnover_categories=getattr(data, "turnover_categories", None),
             shops_order=data.shops_order,
             checks_clients_df=data.checks_clients,
             report_week=report_week,

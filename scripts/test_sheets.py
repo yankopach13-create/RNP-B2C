@@ -17,6 +17,7 @@ from data.references import (  # noqa: E402
     REF_GROUPS_ORDER,
     REF_PCT_NO_BK,
     REF_SHOP_GROUPS,
+    REF_TURNOVER_CATEGORIES,
     _sheet_name,
     sheets_configured,
 )
@@ -28,6 +29,7 @@ SHEET_KEYS = (
     REF_GROUPS_ORDER,
     REF_FOCUS,
     REF_PCT_NO_BK,
+    REF_TURNOVER_CATEGORIES,
 )
 
 

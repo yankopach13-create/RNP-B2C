@@ -189,6 +189,7 @@ def collect_rnp_b2c_sheets(
             data.turnover_week,
             data.categories,
             data.category_order_rnp,
+            getattr(data, "turnover_categories", None),
         )
         turnover_prepared = _prepare_turnover_for_excel(turnover_table)
 

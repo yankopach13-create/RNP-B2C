@@ -10,6 +10,7 @@ from config.constants import (
     GROUPS_ORDER_COLUMN_CANDIDATES,
     GROUPS_ORDER_COLUMN_SHOPS_CANDIDATES,
     REQUIRED_CATEGORY_COLS,
+    TURNOVER_CATEGORIES_COLUMN,
 )
 
 
@@ -35,9 +36,10 @@ class AppData:
     groups_order_rnp: Optional[list[str]]
     category_order_rnp: Optional[list[str]]
     category_order_general: Optional[list[str]]
+    turnover_categories: Optional[list[str]]
     shops_order: Optional[list[str]]
 
-_APP_DATA_OPTIONAL_FIELDS = ("focus_hookah", "focus_fill_free")
+_APP_DATA_OPTIONAL_FIELDS = ("focus_hookah", "focus_fill_free", "turnover_categories")
 
 
 def normalize_app_data(data: AppData | None) -> AppData | None:
@@ -61,6 +63,7 @@ def normalize_app_data(data: AppData | None) -> AppData | None:
         groups_order_rnp=data.groups_order_rnp,
         category_order_rnp=data.category_order_rnp,
         category_order_general=data.category_order_general,
+        turnover_categories=getattr(data, "turnover_categories", None),
         shops_order=data.shops_order,
     )
 
@@ -164,6 +167,7 @@ def _load_reference_batch() -> dict[str, pd.DataFrame]:
         refs.REF_GROUPS_ORDER,
         refs.REF_CATEGORY_ORDER,
         refs.REF_FOCUS,
+        refs.REF_TURNOVER_CATEGORIES,
     ]
     try:
         return refs.load_all_references(keys)
@@ -213,6 +217,21 @@ def _category_order_from_batch(
     if CATEGORY_ORDER_COLUMN_GENERAL in order_df.columns:
         general = _column_names_from_reference(order_df, CATEGORY_ORDER_COLUMN_GENERAL)
     return rnp, general
+
+
+def _turnover_categories_from_batch(
+    batch: dict[str, pd.DataFrame],
+) -> Optional[list[str]]:
+    refs = _references()
+    turnover_df = batch.get(refs.REF_TURNOVER_CATEGORIES)
+    if turnover_df is None:
+        return None
+    turnover_df = turnover_df.copy()
+    turnover_df.columns = turnover_df.columns.str.strip()
+    if TURNOVER_CATEGORIES_COLUMN not in turnover_df.columns:
+        return None
+    categories = _column_names_from_reference(turnover_df, TURNOVER_CATEGORIES_COLUMN)
+    return categories or None
 
 
 def _column_names_from_reference(df: pd.DataFrame, column: str) -> list[str]:
@@ -281,6 +300,7 @@ def load_all_data(files) -> AppData:
 
     groups_order_rnp, shops_order = _groups_order_from_batch(ref_batch)
     category_order_rnp, category_order_general = _category_order_from_batch(ref_batch)
+    turnover_categories = _turnover_categories_from_batch(ref_batch)
 
     lfl_df = None
     if getattr(files, "lfl", None):
@@ -378,5 +398,6 @@ def load_all_data(files) -> AppData:
         groups_order_rnp=groups_order_rnp,
         category_order_rnp=category_order_rnp,
         category_order_general=category_order_general,
+        turnover_categories=turnover_categories,
         shops_order=shops_order,
     )

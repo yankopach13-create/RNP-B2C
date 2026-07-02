@@ -257,6 +257,7 @@ def test_excel_export_hookah_and_fill_free_sheets() -> None:
         groups_order_rnp=None,
         category_order_rnp=None,
         category_order_general=None,
+        turnover_categories=None,
         shops_order=None,
     )
     week_config = WeekCalculationConfig(

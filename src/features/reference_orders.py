@@ -18,6 +18,16 @@ def resolve_categories_rnp(category_order_rnp: list[str] | None) -> list[str]:
     return list(CATEGORY_ORDER)
 
 
+def resolve_turnover_categories(
+    turnover_categories: list[str] | None,
+    category_order_rnp: list[str] | None = None,
+) -> list[str]:
+    """Категории для блока оборачиваемости: лист turnover, иначе category_order."""
+    if turnover_categories:
+        return list(turnover_categories)
+    return resolve_categories_rnp(category_order_rnp)
+
+
 def resolve_categories_general(category_order_general: list[str] | None) -> list[str]:
     """Список категорий Общего РНП из category_order (без fallback на РНП)."""
     if category_order_general:

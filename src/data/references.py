@@ -23,6 +23,7 @@ from config.constants import (
     REFERENCE_DIR,
     REFERENCE_GROUPS_FILENAMES,
     REFERENCE_PCT_NO_BK_FILENAMES,
+    REFERENCE_TURNOVER_CATEGORIES_FILENAMES,
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +34,7 @@ REF_CATEGORIES = "categories"
 REF_CATEGORY_ORDER = "category_order"
 REF_GROUPS_ORDER = "groups_order"
 REF_FOCUS = "focus"
+REF_TURNOVER_CATEGORIES = "turnover_categories"
 REF_PCT_NO_BK = "pct_no_bk"
 
 _REFERENCE_META: dict[str, dict[str, Any]] = {
@@ -60,6 +62,11 @@ _REFERENCE_META: dict[str, dict[str, Any]] = {
         "sheet": "focus",
         "local": ("focus.xlsx",),
         "title": "Фокусные позиции",
+    },
+    REF_TURNOVER_CATEGORIES: {
+        "sheet": "turnover",
+        "local": REFERENCE_TURNOVER_CATEGORIES_FILENAMES,
+        "title": "Категории оборачиваемости",
     },
     REF_PCT_NO_BK: {
         "sheet": "%_bk",

@@ -23,6 +23,7 @@ from features.reference_orders import (
     resolve_categories_rnp,
     resolve_groups_order,
     resolve_shops_order,
+    resolve_turnover_categories,
 )
 from features.turnover import prepare_turnover_table
 
@@ -42,6 +43,7 @@ def render_global_metrics(
     turnover_week_df: pd.DataFrame = None,
     client_segments_df: pd.DataFrame = None,
     category_order_rnp: list[str] | None = None,
+    turnover_categories: list[str] | None = None,
     groups_order_rnp: list[str] | None = None,
     focus_df: pd.DataFrame | None = None,
     shops_order: list[str] | None = None,
@@ -90,10 +92,13 @@ def render_global_metrics(
             turnover_week_df,
             categories_df,
             category_order_rnp,
+            turnover_categories,
         )
 
     block_height = _full_table_height(
-        _turnover_display_row_count(turnover_table, category_order_rnp)
+        _turnover_display_row_count(
+            turnover_table, category_order_rnp, turnover_categories
+        )
     )
     df_kwargs = {
         "use_container_width": True,
@@ -203,10 +208,11 @@ def _full_table_height(row_count: int) -> int:
 def _turnover_display_row_count(
     turnover_table: pd.DataFrame | None,
     category_order_rnp: list[str] | None,
+    turnover_categories: list[str] | None = None,
 ) -> int:
     if turnover_table is not None and len(turnover_table) > 0:
         return len(turnover_table)
-    ordered = resolve_categories_rnp(category_order_rnp)
+    ordered = resolve_turnover_categories(turnover_categories, category_order_rnp)
     return len(ordered) if ordered else 1
 
 
@@ -644,6 +650,7 @@ def _build_turnover_summary(
     turnover_week_df: pd.DataFrame,
     categories_df: pd.DataFrame | None,
     category_order_rnp: list[str] | None = None,
+    turnover_categories: list[str] | None = None,
 ) -> pd.DataFrame | None:
     if categories_df is None:
         return None
@@ -670,7 +677,7 @@ def _build_turnover_summary(
         else pd.DataFrame(columns=["90 дней", "7 дней"])
     )
 
-    ordered = resolve_categories_rnp(category_order_rnp)
+    ordered = resolve_turnover_categories(turnover_categories, category_order_rnp)
     if ordered:
         result = result.reindex(index=ordered)
     elif not result.empty:
