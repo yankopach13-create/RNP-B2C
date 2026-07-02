@@ -22,8 +22,8 @@ from features.metrics import (
     _fmt_int,
 )
 
-# Подпись в ИИ отчёте → ключ категории РНП (столбец «Категория» в продажах).
-_AI_CATEGORY_MAP: list[tuple[str, str]] = [
+# Подпись в ИИ отчёте → ключ(и) категории РНП (столбец «Категория» в продажах).
+_AI_CATEGORY_MAP: list[tuple[str, str | tuple[str, ...]]] = [
     ("Одноразовые электронные сигареты ( 2 мл )", "ОЭС 2 мл"),
     ("Одноразовые электронные сигареты ( 10 мл )", "ОЭС 10 мл"),
     ("Жидкость 25 мл.", "Жидкость 25 мл"),
@@ -32,8 +32,23 @@ _AI_CATEGORY_MAP: list[tuple[str, str]] = [
     ("Закрытые под-системы", "Закрытая под-система"),
     ("Картриджи с жидкостью", "Картриджи с жидкостью"),
     ("Никотиновые паучи", "Никотиновые паучи"),
-    ("БКС", "БКС"),
-    ("Прочие товары", "Прочие товары"),
+    (
+        "Кальянные смеси",
+        ("Кальянные смеси", "БКС", "1.1 Бестабачная Смесь"),
+    ),
+    (
+        "Прочие товары",
+        (
+            "Прочие товары",
+            "Уголь",
+            "Кальяны",
+            "Кальян",
+            "Аксессуары",
+            "1.2 Уголь для кальяна",
+            "1.4 Кальяны",
+            "1.3 Аксессуары для Кальяна",
+        ),
+    ),
 ]
 
 _AI_AVG_CHECK_METRICS = frozenset(
@@ -161,9 +176,9 @@ def build_ai_report_table(
     )
 
 
-def _category_qty(totals: pd.Series | None, category: str) -> str:
+def _category_qty(totals: pd.Series | None, category: str | tuple[str, ...]) -> str:
     if totals is None:
         return ""
-    if category not in totals.index:
-        return _fmt_int(0)
-    return _fmt_int(float(totals[category]))
+    names = (category,) if isinstance(category, str) else category
+    qty = sum(float(totals[name]) for name in names if name in totals.index)
+    return _fmt_int(qty)
