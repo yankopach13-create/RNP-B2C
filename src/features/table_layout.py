@@ -6,6 +6,8 @@ from __future__ import annotations
 FINANCIAL_TABLE_VISIBLE_ROWS = 5
 FINANCIAL_TABLE_ROW_HEIGHT_PX = 35
 FINANCIAL_TABLE_HEADER_HEIGHT_PX = 38
+# Панель st.dataframe (кнопка fullscreen и т.п.) — не входит в параметр height.
+FINANCIAL_TABLE_TOOLBAR_HEIGHT_PX = 48
 RNP_COMPACT_TABLE_KEY_PREFIX = "rnp_compact_"
 
 
@@ -29,25 +31,14 @@ def compact_dataframe_kwargs(**extra) -> dict:
 
 
 def compact_dataframe_layout_css() -> str:
-    """CSS: фиксированная высота контейнера, чтобы таблицы не наслаивались."""
-    height_px = compact_dataframe_height()
-    scroll_px = height_px - FINANCIAL_TABLE_HEADER_HEIGHT_PX
+    """CSS: резерв высоты блока, чтобы таблицы не наслаивались (без обрезки UI)."""
+    grid_height_px = compact_dataframe_height()
+    block_height_px = grid_height_px + FINANCIAL_TABLE_TOOLBAR_HEIGHT_PX
     prefix = RNP_COMPACT_TABLE_KEY_PREFIX
     return f"""
     [class*="{prefix}"] {{
-        min-height: {height_px}px !important;
-        margin-bottom: 0.65rem !important;
-        overflow: hidden !important;
-    }}
-    [class*="{prefix}"] [data-testid="stDataFrame"],
-    [class*="{prefix}"] [data-testid="stDataFrameResizable"],
-    [class*="{prefix}"] [data-testid="stDataFrameGlideDataEditor"] {{
-        height: {height_px}px !important;
-        max-height: {height_px}px !important;
-        min-height: {height_px}px !important;
-    }}
-    [class*="{prefix}"] .dvn-scroller,
-    [class*="{prefix}"] .dvn-scroll-inner {{
-        max-height: {scroll_px}px !important;
+        display: flow-root;
+        min-height: {block_height_px}px;
+        margin-bottom: 0.65rem;
     }}
     """
