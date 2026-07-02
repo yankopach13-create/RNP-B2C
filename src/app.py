@@ -32,7 +32,6 @@ from features.metrics import (
     _build_shop_economy_table,
     _can_build_financial_metrics,
     _fmt_fin_int,
-    _full_table_height,
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
 )
 from features.excise_liquid import WeekCalculationConfig, excise_margin_deduction
@@ -60,6 +59,7 @@ SHOP_ECONOMY_SHOP_COL_WIDTH_PX = 165
 
 
 def main():
+    _inject_dataframe_fullscreen_styles()
     st.title("B2C")
     st.markdown(
         '<a href="https://docs.google.com/spreadsheets/d/14ecZy9BRnYiHOjASyPmcBttuUjtv6rY-a4cazeBhldM/edit?hl=ru&gid=1406589453#gid=1406589453" '
@@ -281,6 +281,29 @@ def _render_rnp_b2c_header(
 
     if st.session_state.show_checks_no_bk_block:
         render_checks_no_bk_block(groups_df=data.groups)
+
+
+def _inject_dataframe_fullscreen_styles() -> None:
+    """В полноэкранном режиме st.dataframe растягивается на всю высоту экрана."""
+    st.markdown(
+        """
+        <style>
+        [data-testid="stFullScreenFrame"] {
+            align-items: stretch !important;
+            justify-content: flex-start !important;
+        }
+        [data-testid="stFullScreenFrame"] [data-testid="stDataFrame"],
+        [data-testid="stFullScreenFrame"] [data-testid="stDataFrameResizable"] {
+            flex: 1 1 auto !important;
+            width: 100% !important;
+            min-height: calc(100dvh - 5rem) !important;
+            height: calc(100dvh - 5rem) !important;
+            max-height: calc(100dvh - 5rem) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _inject_rnp_block_styles() -> None:
@@ -672,12 +695,6 @@ def _render_shop_economy_and_lfl(
             excise_liquid_lfl_qty=excise_lfl_qty,
             excise_liquid_report_qty=excise_report_qty,
         )
-    paired_table_height = (
-        _full_table_height(len(lfl_table))
-        if lfl_table is not None and not lfl_table.empty
-        else None
-    )
-
     with col_left:
         st.markdown("**Экономика магазинов**")
         if has_shop:
@@ -685,14 +702,11 @@ def _render_shop_economy_and_lfl(
                 sales_df, data.shops_order
             )
             if not shop_table.empty:
-                shop_table_height = paired_table_height or _full_table_height(
-                    len(shop_table)
-                )
                 st.dataframe(
                     shop_table.reset_index(),
                     use_container_width=True,
                     hide_index=True,
-                    height=shop_table_height,
+                    height="auto",
                     row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
                     column_config={
                         "Магазин": st.column_config.TextColumn(
@@ -722,7 +736,6 @@ def _render_shop_economy_and_lfl(
                 excise_liquid_report_qty=excise_report_qty,
                 embedded=True,
                 prebuilt_table=lfl_table,
-                table_height=paired_table_height,
             )
         else:
             st.markdown("**Факторный анализ**")

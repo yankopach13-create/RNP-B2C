@@ -92,12 +92,9 @@ def render_global_metrics(
             category_order_rnp,
         )
 
-    block_height = _full_table_height(
-        _turnover_display_row_count(turnover_table, category_order_rnp)
-    )
     df_kwargs = {
         "use_container_width": True,
-        "height": block_height,
+        "height": "auto",
         "row_height": FINANCIAL_TABLE_ROW_HEIGHT_PX,
     }
 
@@ -112,7 +109,7 @@ def render_global_metrics(
             st.info("Нет данных для расчёта оборачиваемости.")
 
     with col_focus:
-        render_focus_block(df, focus_df, table_height=block_height)
+        render_focus_block(df, focus_df)
 
     with col_client:
         render_client_block(
@@ -120,7 +117,6 @@ def render_global_metrics(
             report_week,
             client_segments=client_segments_df,
             embedded=True,
-            table_height=block_height,
             row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         )
 
@@ -515,13 +511,13 @@ def render_financial_metrics_table(
 
 
 def _render_financial_dataframe(table: pd.DataFrame, row_styles: list[str]) -> None:
-    """Таблица с прокруткой: одновременно видно 3 строки."""
+    """Таблица с прокруткой; в полноэкранном режиме — все строки."""
     st.dataframe(
         _style_financial_metrics_table(table, row_styles),
         use_container_width=True,
         hide_index=True,
         column_config=_financial_metrics_column_config(),
-        height=_financial_dataframe_height(),
+        height="auto",
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
     )
 
