@@ -8,13 +8,11 @@ import pandas as pd
 import streamlit as st
 
 from features.data_prep import filter_sales_by_report_week
-from features.metrics import (
-    FINANCIAL_TABLE_ROW_HEIGHT_PX,
-)
+from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX, compact_dataframe_height
 
 COL_METRIC = "Метрика"
 COL_VALUE = "Значение"
-FOCUS_TABLE_VISIBLE_ROWS = 10
+from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX, compact_dataframe_height
 HOOKAH_TABLE_ROW_HEIGHT_PX = 35
 
 COL_SHOP = "Магазин"
@@ -133,7 +131,7 @@ def render_hookah_products_block(
         table,
         use_container_width=True,
         hide_index=True,
-        height="auto",
+        height=compact_dataframe_height(),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
     )
 

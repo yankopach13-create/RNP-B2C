@@ -8,6 +8,7 @@ from features.excise_liquid import (
 )
 from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    compact_dataframe_height,
 )
 from features.reference_orders import resolve_categories_rnp
 
@@ -81,7 +82,7 @@ def render_lfl_block(
         table,
         use_container_width=True,
         hide_index=True,
-        height=table_height if table_height is not None else "auto",
+        height=table_height if table_height is not None else compact_dataframe_height(),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config=_lfl_column_config(table),
     )

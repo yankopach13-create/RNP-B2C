@@ -32,6 +32,7 @@ from features.metrics import (
     _build_shop_economy_table,
     _can_build_financial_metrics,
     _fmt_fin_int,
+    compact_dataframe_height,
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
 )
 from features.excise_liquid import WeekCalculationConfig, excise_margin_deduction
@@ -284,7 +285,7 @@ def _render_rnp_b2c_header(
 
 
 def _inject_dataframe_fullscreen_styles() -> None:
-    """В полноэкранном режиме st.dataframe растягивается на всю высоту экрана."""
+    """Компактные таблицы на листе; в fullscreen — на всю высоту экрана."""
     st.markdown(
         """
         <style>
@@ -293,12 +294,18 @@ def _inject_dataframe_fullscreen_styles() -> None:
             justify-content: flex-start !important;
         }
         [data-testid="stFullScreenFrame"] [data-testid="stDataFrame"],
-        [data-testid="stFullScreenFrame"] [data-testid="stDataFrameResizable"] {
+        [data-testid="stFullScreenFrame"] [data-testid="stDataFrameResizable"],
+        [data-testid="stFullScreenFrame"] [data-testid="stDataFrameGlideDataEditor"] {
             flex: 1 1 auto !important;
             width: 100% !important;
             min-height: calc(100dvh - 5rem) !important;
             height: calc(100dvh - 5rem) !important;
             max-height: calc(100dvh - 5rem) !important;
+        }
+        [data-testid="stFullScreenFrame"] .dvn-scroller,
+        [data-testid="stFullScreenFrame"] .dvn-scroll-inner {
+            height: 100% !important;
+            max-height: 100% !important;
         }
         </style>
         """,
@@ -706,7 +713,7 @@ def _render_shop_economy_and_lfl(
                     shop_table.reset_index(),
                     use_container_width=True,
                     hide_index=True,
-                    height="auto",
+                    height=compact_dataframe_height(),
                     row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
                     column_config={
                         "Магазин": st.column_config.TextColumn(

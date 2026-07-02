@@ -24,12 +24,11 @@ def render_focus_block(
             st.info("Нет данных для отображения фокусных позиций.")
         return
 
-    df_kwargs: dict = {"use_container_width": True, "hide_index": True}
-    if table_height is not None:
-        from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX
+    from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX, compact_dataframe_height
 
-        df_kwargs["height"] = table_height
-        df_kwargs["row_height"] = FINANCIAL_TABLE_ROW_HEIGHT_PX
+    df_kwargs: dict = {"use_container_width": True, "hide_index": True}
+    df_kwargs["height"] = table_height if table_height is not None else compact_dataframe_height()
+    df_kwargs["row_height"] = FINANCIAL_TABLE_ROW_HEIGHT_PX
     st.dataframe(display_df, **df_kwargs)
 
 

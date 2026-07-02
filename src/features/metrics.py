@@ -92,9 +92,10 @@ def render_global_metrics(
             category_order_rnp,
         )
 
+    compact_height = compact_dataframe_height()
     df_kwargs = {
         "use_container_width": True,
-        "height": "auto",
+        "height": compact_height,
         "row_height": FINANCIAL_TABLE_ROW_HEIGHT_PX,
     }
 
@@ -109,7 +110,7 @@ def render_global_metrics(
             st.info("Нет данных для расчёта оборачиваемости.")
 
     with col_focus:
-        render_focus_block(df, focus_df)
+        render_focus_block(df, focus_df, table_height=compact_height)
 
     with col_client:
         render_client_block(
@@ -117,6 +118,7 @@ def render_global_metrics(
             report_week,
             client_segments=client_segments_df,
             embedded=True,
+            table_height=compact_height,
             row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         )
 
@@ -172,8 +174,8 @@ def render_group_sections(df: pd.DataFrame):
 
 VAT_NET_DIVISOR = 1.2  # выручка без НДС при ставке НДС 20%
 
-# Высота таблиц финансовых метрик: видно 3 строки данных + прокрутка
-FINANCIAL_TABLE_VISIBLE_ROWS = 3
+# Высота таблиц на листе: видно 5 строк данных + прокрутка; fullscreen — все строки.
+FINANCIAL_TABLE_VISIBLE_ROWS = 5
 FINANCIAL_TABLE_ROW_HEIGHT_PX = 35
 FINANCIAL_TABLE_HEADER_HEIGHT_PX = 38
 # Одинаковая ширина столбцов в «Общие» и «Подразделения»
@@ -188,6 +190,25 @@ CATEGORY_SUBDIVISION_SPACER_ROWS = 3
 
 def _financial_dataframe_height(visible_rows: int = FINANCIAL_TABLE_VISIBLE_ROWS) -> int:
     return FINANCIAL_TABLE_HEADER_HEIGHT_PX + visible_rows * FINANCIAL_TABLE_ROW_HEIGHT_PX
+
+
+def compact_dataframe_height(
+    visible_rows: int = FINANCIAL_TABLE_VISIBLE_ROWS,
+) -> int:
+    """Компактная высота таблицы на странице (без полноэкранного режима)."""
+    return _financial_dataframe_height(visible_rows)
+
+
+def compact_dataframe_kwargs(**extra) -> dict:
+    """Общие параметры st.dataframe: компактно на листе, полный список в fullscreen."""
+    kwargs = {
+        "use_container_width": True,
+        "hide_index": True,
+        "height": compact_dataframe_height(),
+        "row_height": FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    }
+    kwargs.update(extra)
+    return kwargs
 
 
 def _full_table_height(row_count: int) -> int:
@@ -511,14 +532,11 @@ def render_financial_metrics_table(
 
 
 def _render_financial_dataframe(table: pd.DataFrame, row_styles: list[str]) -> None:
-    """Таблица с прокруткой; в полноэкранном режиме — все строки."""
+    """Компактная таблица на листе; в fullscreen — все строки."""
     st.dataframe(
         _style_financial_metrics_table(table, row_styles),
-        use_container_width=True,
-        hide_index=True,
         column_config=_financial_metrics_column_config(),
-        height="auto",
-        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
+        **compact_dataframe_kwargs(),
     )
 
 

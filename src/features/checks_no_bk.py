@@ -547,10 +547,13 @@ def _render_order_table(
         )
         return
 
+    from features.metrics import compact_dataframe_height
+
     st.dataframe(
         table,
         use_container_width=True,
         hide_index=True,
+        height=compact_dataframe_height(),
         row_height=_TABLE_ROW_HEIGHT_PX,
         column_config={
             name_column: st.column_config.TextColumn(

@@ -12,9 +12,7 @@ from features.hookah_products import (
     HOOKAH_GROUP_LABELS,
     HOOKAH_GROUP_LABEL_TO_REF,
 )
-from features.metrics import (
-    FINANCIAL_TABLE_ROW_HEIGHT_PX,
-)
+from features.metrics import FINANCIAL_TABLE_ROW_HEIGHT_PX, compact_dataframe_height
 
 COL_GROUP = "Группа"
 COL_CUMULATIVE = "Накопительно"
@@ -115,7 +113,7 @@ def render_fill_free_products_block(
         table,
         use_container_width=True,
         hide_index=True,
-        height="auto",
+        height=compact_dataframe_height(),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
     )
 
