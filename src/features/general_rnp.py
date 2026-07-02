@@ -125,32 +125,24 @@ _GENERAL_CATEGORY_MAP: list[tuple[str, str]] = [
 ]
 
 _GENERAL_HOOKAH_PRODUCT = "Кальянная продукция"
+# Сумма для строки «Кальянная продукция» (все варианты имён в продажах).
 _GENERAL_HOOKAH_COMPONENTS = (
     "Уголь",
     "Кальян",
+    "Кальяны",
     "Кальянные смеси",
     "Аксессуары",
 )
-_GENERAL_HIDDEN_CATEGORY_ROWS = frozenset(
-    {
-        "БКС",
-        "Кальяны",
-        "в т.ч. Кальянные смеси",
-        *_GENERAL_HOOKAH_COMPONENTS,
-    }
-)
+# Не выводить в Общем РНП, даже если есть в category_order (устаревшие строки).
+_GENERAL_SKIP_CATEGORY_ROWS = frozenset({"БКС", "в т.ч. Кальянные смеси"})
 
 
-def _is_hidden_general_category(category: str) -> bool:
+def _is_skipped_general_category(category: str) -> bool:
     text = str(category or "").strip()
-    if not text:
-        return True
-    if text in _GENERAL_HIDDEN_CATEGORY_ROWS:
+    if not text or text in _GENERAL_SKIP_CATEGORY_ROWS:
         return True
     lower = text.casefold()
-    if "в т.ч." in lower and "кальян" in lower:
-        return True
-    return False
+    return "в т.ч." in lower and "кальян" in lower
 
 
 def _general_category_source(category: str) -> str | tuple[str, ...]:
@@ -161,23 +153,24 @@ def _general_category_source(category: str) -> str | tuple[str, ...]:
 
 def _general_category_metric_rows(
     category_order_general: list[str] | None,
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str | tuple[str, ...]]]:
     """
-    Строки количества в Общем РНП: (подпись в таблице, ключ суммирования).
-    Строго по столбцу category_order «Общий РНП» без автодобавления подстрок.
+    Строки количества в Общем РНП: (подпись, ключ суммирования).
+    Строго по столбцу category_order «Общий РНП».
     """
     label_by_source: dict[str, str] = {}
     for label, source in _GENERAL_CATEGORY_MAP:
         label_by_source[source] = label
 
-    if category_order_general:
-        order = resolve_categories_general(category_order_general)
-    else:
-        order = list(label_by_source.keys())
+    order = (
+        resolve_categories_general(category_order_general)
+        if category_order_general
+        else []
+    )
 
     rows: list[tuple[str, str | tuple[str, ...]]] = []
     for gen in order:
-        if _is_hidden_general_category(gen):
+        if _is_skipped_general_category(gen):
             continue
         label = label_by_source.get(gen, f"{gen}, шт.")
         rows.append((label, _general_category_source(gen)))
