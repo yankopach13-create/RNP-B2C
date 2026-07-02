@@ -9,12 +9,13 @@ import streamlit as st
 
 from features.clients import _has_client_code
 from features.hookah_products import (
+    FOCUS_TABLE_VISIBLE_ROWS,
     HOOKAH_GROUP_LABELS,
     HOOKAH_GROUP_LABEL_TO_REF,
 )
-from features.table_layout import (
+from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
-    compact_dataframe_height,
+    _financial_dataframe_height,
 )
 
 COL_GROUP = "Группа"
@@ -116,7 +117,7 @@ def render_fill_free_products_block(
         table,
         use_container_width=True,
         hide_index=True,
-        height=compact_dataframe_height(),
+        height=_financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
     )
 

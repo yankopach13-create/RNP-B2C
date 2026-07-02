@@ -24,14 +24,6 @@ from features.reference_orders import (
     resolve_groups_order,
     resolve_shops_order,
 )
-from features.table_layout import (
-    FINANCIAL_TABLE_HEADER_HEIGHT_PX,
-    FINANCIAL_TABLE_ROW_HEIGHT_PX,
-    FINANCIAL_TABLE_VISIBLE_ROWS,
-    RNP_COMPACT_TABLE_KEY_PREFIX,
-    compact_dataframe_height,
-    compact_dataframe_kwargs,
-)
 from features.turnover import prepare_turnover_table
 
 
@@ -100,10 +92,12 @@ def render_global_metrics(
             category_order_rnp,
         )
 
-    compact_height = compact_dataframe_height()
+    block_height = _full_table_height(
+        _turnover_display_row_count(turnover_table, category_order_rnp)
+    )
     df_kwargs = {
         "use_container_width": True,
-        "height": compact_height,
+        "height": block_height,
         "row_height": FINANCIAL_TABLE_ROW_HEIGHT_PX,
     }
 
@@ -118,7 +112,7 @@ def render_global_metrics(
             st.info("Нет данных для расчёта оборачиваемости.")
 
     with col_focus:
-        render_focus_block(df, focus_df, table_height=compact_height)
+        render_focus_block(df, focus_df, table_height=block_height)
 
     with col_client:
         render_client_block(
@@ -126,7 +120,7 @@ def render_global_metrics(
             report_week,
             client_segments=client_segments_df,
             embedded=True,
-            table_height=compact_height,
+            table_height=block_height,
             row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         )
 
@@ -182,6 +176,10 @@ def render_group_sections(df: pd.DataFrame):
 
 VAT_NET_DIVISOR = 1.2  # выручка без НДС при ставке НДС 20%
 
+# Высота таблиц финансовых метрик: видно 3 строки данных + прокрутка
+FINANCIAL_TABLE_VISIBLE_ROWS = 3
+FINANCIAL_TABLE_ROW_HEIGHT_PX = 35
+FINANCIAL_TABLE_HEADER_HEIGHT_PX = 38
 # Одинаковая ширина столбцов в «Общие» и «Подразделения»
 FINANCIAL_TABLE_COL_GROUP_PX = 200
 FINANCIAL_TABLE_COL_METRIC_PX = 220
@@ -193,7 +191,7 @@ CATEGORY_SUBDIVISION_SPACER_ROWS = 3
 
 
 def _financial_dataframe_height(visible_rows: int = FINANCIAL_TABLE_VISIBLE_ROWS) -> int:
-    return compact_dataframe_height(visible_rows)
+    return FINANCIAL_TABLE_HEADER_HEIGHT_PX + visible_rows * FINANCIAL_TABLE_ROW_HEIGHT_PX
 
 
 def _full_table_height(row_count: int) -> int:
@@ -505,11 +503,7 @@ def render_financial_metrics_table(
     )
     general_table, general_styles = _financial_rows_to_dataframe(b2c_rows)
     st.caption("Общие")
-    _render_financial_dataframe(
-        general_table,
-        general_styles,
-        container_key=f"{RNP_COMPACT_TABLE_KEY_PREFIX}fin_general",
-    )
+    _render_financial_dataframe(general_table, general_styles)
 
     group_rows = _build_financial_group_rows(df, groups_order_rnp)
     if not group_rows:
@@ -517,26 +511,19 @@ def render_financial_metrics_table(
 
     groups_table, groups_styles = _financial_rows_to_dataframe(group_rows)
     st.caption("Подразделения")
-    _render_financial_dataframe(
-        groups_table,
-        groups_styles,
-        container_key=f"{RNP_COMPACT_TABLE_KEY_PREFIX}fin_groups",
+    _render_financial_dataframe(groups_table, groups_styles)
+
+
+def _render_financial_dataframe(table: pd.DataFrame, row_styles: list[str]) -> None:
+    """Таблица с прокруткой: одновременно видно 3 строки."""
+    st.dataframe(
+        _style_financial_metrics_table(table, row_styles),
+        use_container_width=True,
+        hide_index=True,
+        column_config=_financial_metrics_column_config(),
+        height=_financial_dataframe_height(),
+        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
     )
-
-
-def _render_financial_dataframe(
-    table: pd.DataFrame,
-    row_styles: list[str],
-    *,
-    container_key: str,
-) -> None:
-    """Компактная таблица: 5 видимых строк и прокрутка; в fullscreen — все строки."""
-    with st.container(key=container_key):
-        st.dataframe(
-            _style_financial_metrics_table(table, row_styles),
-            column_config=_financial_metrics_column_config(),
-            **compact_dataframe_kwargs(),
-        )
 
 
 def _can_build_category_sales(df: pd.DataFrame) -> bool:
@@ -639,11 +626,7 @@ def render_category_sales_table(
     general_rows = _build_category_sales_general_rows(df, category_order_rnp)
     general_table, general_styles = _financial_rows_to_dataframe(general_rows)
     st.caption("Общие")
-    _render_financial_dataframe(
-        general_table,
-        general_styles,
-        container_key=f"{RNP_COMPACT_TABLE_KEY_PREFIX}cat_general",
-    )
+    _render_financial_dataframe(general_table, general_styles)
 
     group_rows = _build_category_sales_group_rows(
         df, category_order_rnp, groups_order_rnp
@@ -653,11 +636,7 @@ def render_category_sales_table(
 
     groups_table, groups_styles = _financial_rows_to_dataframe(group_rows)
     st.caption("Подразделения")
-    _render_financial_dataframe(
-        groups_table,
-        groups_styles,
-        container_key=f"{RNP_COMPACT_TABLE_KEY_PREFIX}cat_groups",
-    )
+    _render_financial_dataframe(groups_table, groups_styles)
 
 
 def _build_turnover_summary(

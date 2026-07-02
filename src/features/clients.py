@@ -81,10 +81,6 @@ def render_client_block(
     }
     if table_height is not None:
         df_kwargs["height"] = table_height
-    else:
-        from features.table_layout import compact_dataframe_height
-
-        df_kwargs["height"] = compact_dataframe_height()
     st.dataframe(table, **df_kwargs)
 
 
