@@ -1,11 +1,11 @@
 import re
 import pandas as pd
 import streamlit as st
-from config.constants import GROUP_ORDER, GROUP_SIGNET_BOOSTERS_NAMES
+from config.constants import GROUP_ORDER
 from data.references import REF_FOCUS, get_reference_label
+from features.group_labels import is_signet_boosters_group, normalize_group_label
 
 EXCLUDED_GROUPS = {"Интернет-магазин"}
-_HIDDEN_SUBDIVISION_GROUPS = EXCLUDED_GROUPS | set(GROUP_SIGNET_BOOSTERS_NAMES)
 _INVALID_LABELS = {"", "nan", "none", "<na>"}
 
 
@@ -23,7 +23,7 @@ def _ordered_focus_categories(categories) -> list[str]:
 def _normalize_group(value: str) -> str:
     if pd.isna(value):
         return ""
-    return re.sub(r"\s+", " ", str(value).strip()).casefold()
+    return normalize_group_label(value)
 
 
 def render_focus_block(
@@ -177,11 +177,7 @@ def build_focus_display_df(
     ordered_groups = [g for g in GROUP_ORDER if g in pivot.index]
     extra_groups = [g for g in pivot.index if g not in ordered_groups]
     ordered_groups.extend(extra_groups)
-
-    hidden_subdivision_norm = {_normalize_group(g) for g in _HIDDEN_SUBDIVISION_GROUPS}
-    ordered_groups = [
-        g for g in ordered_groups if _normalize_group(g) not in hidden_subdivision_norm
-    ]
+    ordered_groups = [g for g in ordered_groups if not is_signet_boosters_group(g)]
 
     rows = []
 

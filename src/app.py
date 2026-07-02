@@ -47,6 +47,7 @@ from ui.data_session import (
     get_df_report_cached,
     get_stored_app_data,
     get_stored_prepared,
+    ensure_app_logic_version,
     load_and_store_app_data,
     should_reload_data,
 )
@@ -60,6 +61,7 @@ SHOP_ECONOMY_SHOP_COL_WIDTH_PX = 165
 
 
 def main():
+    ensure_app_logic_version()
     st.title("B2C")
     st.markdown(
         '<a href="https://docs.google.com/spreadsheets/d/14ecZy9BRnYiHOjASyPmcBttuUjtv6rY-a4cazeBhldM/edit?hl=ru&gid=1406589453#gid=1406589453" '

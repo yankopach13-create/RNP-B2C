@@ -131,7 +131,26 @@ _GENERAL_HOOKAH_COMPONENTS = (
     "Кальянные смеси",
     "Аксессуары",
 )
-_GENERAL_SKIP_CATEGORY_ROWS = frozenset({"БКС"})
+_GENERAL_HIDDEN_CATEGORY_ROWS = frozenset(
+    {
+        "БКС",
+        "Кальяны",
+        "в т.ч. Кальянные смеси",
+        *_GENERAL_HOOKAH_COMPONENTS,
+    }
+)
+
+
+def _is_hidden_general_category(category: str) -> bool:
+    text = str(category or "").strip()
+    if not text:
+        return True
+    if text in _GENERAL_HIDDEN_CATEGORY_ROWS:
+        return True
+    lower = text.casefold()
+    if "в т.ч." in lower and "кальян" in lower:
+        return True
+    return False
 
 
 def _general_category_source(category: str) -> str | tuple[str, ...]:
@@ -156,9 +175,9 @@ def _general_category_metric_rows(
     else:
         order = list(label_by_source.keys())
 
-    rows: list[tuple[str, str]] = []
+    rows: list[tuple[str, str | tuple[str, ...]]] = []
     for gen in order:
-        if gen in _GENERAL_SKIP_CATEGORY_ROWS:
+        if _is_hidden_general_category(gen):
             continue
         label = label_by_source.get(gen, f"{gen}, шт.")
         rows.append((label, _general_category_source(gen)))

@@ -21,6 +21,30 @@ DF_REPORT_CACHE_KEY = "df_report_cache"
 DF_REPORT_CACHE_VERSION_KEY = "df_report_cache_version"
 TURNOVER_TABLE_KEY = "turnover_table"
 TURNOVER_CACHE_VERSION_KEY = "turnover_cache_version"
+# Увеличивайте при изменениях расчётов — сбрасывает session_state после деплоя.
+APP_LOGIC_VERSION = "2026-07-02-focus-general"
+APP_LOGIC_VERSION_KEY = "app_logic_version"
+
+
+def ensure_app_logic_version() -> None:
+    """Сбрасывает кэш сессии, если после деплоя изменилась логика отчёта."""
+    if st.session_state.get(APP_LOGIC_VERSION_KEY) == APP_LOGIC_VERSION:
+        return
+    st.session_state[APP_LOGIC_VERSION_KEY] = APP_LOGIC_VERSION
+    for key in (
+        APP_DATA_KEY,
+        PREPARED_KEY,
+        TURNOVER_TABLE_KEY,
+        TURNOVER_CACHE_VERSION_KEY,
+        DF_REPORT_CACHE_KEY,
+        DF_REPORT_CACHE_VERSION_KEY,
+        DATA_VERSION_KEY,
+        "run_analysis",
+        "uploaded_files",
+    ):
+        st.session_state.pop(key, None)
+    st.session_state[EXCEL_CACHE_KEY] = {}
+    st.session_state[DF_REPORT_CACHE_KEY] = {}
 
 
 def _bump_data_version() -> int:
