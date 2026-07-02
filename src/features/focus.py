@@ -1,10 +1,11 @@
 import re
 import pandas as pd
 import streamlit as st
-from config.constants import GROUP_ORDER
+from config.constants import GROUP_ORDER, GROUP_SIGNET_BOOSTERS_NAMES
 from data.references import REF_FOCUS, get_reference_label
 
 EXCLUDED_GROUPS = {"Интернет-магазин"}
+_HIDDEN_SUBDIVISION_GROUPS = EXCLUDED_GROUPS | set(GROUP_SIGNET_BOOSTERS_NAMES)
 _INVALID_LABELS = {"", "nan", "none", "<na>"}
 
 
@@ -17,6 +18,12 @@ def _is_valid_label(value) -> bool:
 
 def _ordered_focus_categories(categories) -> list[str]:
     return list(dict.fromkeys(cat for cat in categories if _is_valid_label(cat)))
+
+
+def _normalize_group(value: str) -> str:
+    if pd.isna(value):
+        return ""
+    return re.sub(r"\s+", " ", str(value).strip()).casefold()
 
 
 def render_focus_block(
@@ -122,11 +129,6 @@ def build_focus_display_df(
             .str.replace(r"\s+", " ", regex=True)
         )
 
-        def _normalize_group(value: str) -> str:
-            if pd.isna(value):
-                return ""
-            return re.sub(r"\s+", " ", str(value).strip()).casefold()
-
         EXCLUDED_GROUPS_NORM = {_normalize_group(g) for g in EXCLUDED_GROUPS}
         group_order_norm_map = {_normalize_group(g): g for g in GROUP_ORDER}
 
@@ -175,6 +177,11 @@ def build_focus_display_df(
     ordered_groups = [g for g in GROUP_ORDER if g in pivot.index]
     extra_groups = [g for g in pivot.index if g not in ordered_groups]
     ordered_groups.extend(extra_groups)
+
+    hidden_subdivision_norm = {_normalize_group(g) for g in _HIDDEN_SUBDIVISION_GROUPS}
+    ordered_groups = [
+        g for g in ordered_groups if _normalize_group(g) not in hidden_subdivision_norm
+    ]
 
     rows = []
 

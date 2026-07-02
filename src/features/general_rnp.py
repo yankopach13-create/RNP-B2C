@@ -26,7 +26,6 @@ from features.excise_liquid import apply_total_margin_deduction
 from features.metrics import (
     _can_build_category_sales,
     _can_build_financial_metrics,
-    _category_totals,
     _fmt_fin_int,
     _fmt_fin_pct,
     _fmt_int,
@@ -110,7 +109,7 @@ def _cumulative_only_clients_bk(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-# Подпись в Общем РНП → имя категории Общего РНП; __rnp_bks__ — сумма по категории РНП «БКС»
+# Подпись в Общем РНП → имя категории Общего РНП.
 _GENERAL_CATEGORY_MAP: list[tuple[str, str]] = [
     ("ОЭС 2 мл , шт.", "ОЭС 2 мл"),
     ("ОЭС 4 мл, шт.", "ОЭС 4 мл"),
@@ -122,14 +121,23 @@ _GENERAL_CATEGORY_MAP: list[tuple[str, str]] = [
     ("Картриджи с жидкостью, шт.", "Картриджи с жидкостью"),
     ("Никотиновые паучи, шт.", "Никотиновые паучи"),
     ("Кальянная продукция,шт.", "Кальянная продукция"),
-    ("в т.ч. Кальянные смеси, шт.", "__rnp_bks__"),
     ("Прочие товары, шт.", "Прочие товары"),
 ]
 
-_RNP_CATEGORY_BKS = "БКС"
-_GENERAL_HOOKAH = "Кальянная продукция"
-# Не выводить отдельной строкой в Общем РНП (БКС уже в «в т.ч. Кальянные смеси» под кальянной продукцией).
+_GENERAL_HOOKAH_PRODUCT = "Кальянная продукция"
+_GENERAL_HOOKAH_COMPONENTS = (
+    "Уголь",
+    "Кальян",
+    "Кальянные смеси",
+    "Аксессуары",
+)
 _GENERAL_SKIP_CATEGORY_ROWS = frozenset({"БКС"})
+
+
+def _general_category_source(category: str) -> str | tuple[str, ...]:
+    if category == _GENERAL_HOOKAH_PRODUCT:
+        return _GENERAL_HOOKAH_COMPONENTS
+    return category
 
 
 def _general_category_metric_rows(
@@ -137,39 +145,23 @@ def _general_category_metric_rows(
 ) -> list[tuple[str, str]]:
     """
     Строки количества в Общем РНП: (подпись в таблице, ключ суммирования).
-    Порядок — из category_order «Общий РНП»; новые категории получают строку «{имя}, шт.».
+    Строго по столбцу category_order «Общий РНП» без автодобавления подстрок.
     """
-    fixed_by_general: dict[str, tuple[str, str]] = {}
-    rnp_subrows: list[tuple[str, str]] = []
+    label_by_source: dict[str, str] = {}
     for label, source in _GENERAL_CATEGORY_MAP:
-        if source == "__rnp_bks__":
-            rnp_subrows.append((label, source))
-        else:
-            fixed_by_general[source] = (label, source)
+        label_by_source[source] = label
 
-    order = (
-        resolve_categories_general(category_order_general)
-        if category_order_general
-        else list(fixed_by_general.keys())
-    )
+    if category_order_general:
+        order = resolve_categories_general(category_order_general)
+    else:
+        order = list(label_by_source.keys())
 
     rows: list[tuple[str, str]] = []
     for gen in order:
         if gen in _GENERAL_SKIP_CATEGORY_ROWS:
             continue
-        if gen in fixed_by_general:
-            rows.append(fixed_by_general[gen])
-        else:
-            rows.append((f"{gen}, шт.", gen))
-
-    if rnp_subrows:
-        out: list[tuple[str, str]] = []
-        for label, source in rows:
-            out.append((label, source))
-            if source == _GENERAL_HOOKAH:
-                out.extend(rnp_subrows)
-        rows = out
-
+        label = label_by_source.get(gen, f"{gen}, шт.")
+        rows.append((label, _general_category_source(gen)))
     return rows
 
 
@@ -235,10 +227,6 @@ def build_general_rnp_table(
         checks_clients_df, report_week
     )
     df_cum, df_week = _split_sales_frames(sales_df, report_week)
-    totals_cum = _category_totals(df_cum) if _can_build_category_sales(df_cum) else None
-    totals_week = (
-        _category_totals(df_week) if _can_build_category_sales(df_week) else None
-    )
     totals_general_cum = (
         _general_category_totals(df_cum)
         if _can_build_general_category_sales(df_cum)
@@ -276,22 +264,13 @@ def build_general_rnp_table(
     empty_row("Кол-во нарушений")
 
     for label, source in _general_category_metric_rows(category_order_general):
-        if source == "__rnp_bks__":
-            rows.append(
-                [
-                    label,
-                    _category_qty(totals_cum, _RNP_CATEGORY_BKS),
-                    _category_qty(totals_week, _RNP_CATEGORY_BKS),
-                ]
-            )
-        else:
-            rows.append(
-                [
-                    label,
-                    _category_qty(totals_general_cum, source),
-                    _category_qty(totals_general_week, source),
-                ]
-            )
+        rows.append(
+            [
+                label,
+                _category_qty(totals_general_cum, source),
+                _category_qty(totals_general_week, source),
+            ]
+        )
 
     empty_row("Кол-во брака")
     empty_row("% брака")
