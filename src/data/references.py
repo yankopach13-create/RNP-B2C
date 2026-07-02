@@ -600,7 +600,12 @@ def load_all_references(keys: list[str] | None = None) -> dict[str, pd.DataFrame
         refs = _references_config()
         spreadsheet_id = str(refs["spreadsheet_id"]).strip()
         batch = _load_all_references_from_sheets(spreadsheet_id)
-        return {k: batch[k].copy() for k in wanted}
+        missing = [k for k in wanted if k not in batch]
+        if missing:
+            # Кэш мог быть собран до появления нового листа в _REFERENCE_META.
+            _load_all_references_from_sheets.clear()
+            batch = _load_all_references_from_sheets(spreadsheet_id)
+        return {k: batch[k].copy() for k in wanted if k in batch}
 
     loaded: dict[str, pd.DataFrame] = {}
     for key in wanted:

@@ -171,7 +171,7 @@ def _load_reference_batch() -> dict[str, pd.DataFrame]:
     ]
     try:
         return refs.load_all_references(keys)
-    except FileNotFoundError:
+    except (FileNotFoundError, KeyError):
         batch: dict[str, pd.DataFrame] = {}
         for key in keys:
             df = _safe_load_reference(key)
