@@ -28,6 +28,7 @@ from features.table_layout import (
     FINANCIAL_TABLE_HEADER_HEIGHT_PX,
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     FINANCIAL_TABLE_VISIBLE_ROWS,
+    RNP_COMPACT_TABLE_KEY_PREFIX,
     compact_dataframe_height,
     compact_dataframe_kwargs,
 )
@@ -504,7 +505,11 @@ def render_financial_metrics_table(
     )
     general_table, general_styles = _financial_rows_to_dataframe(b2c_rows)
     st.caption("Общие")
-    _render_financial_dataframe(general_table, general_styles)
+    _render_financial_dataframe(
+        general_table,
+        general_styles,
+        container_key=f"{RNP_COMPACT_TABLE_KEY_PREFIX}fin_general",
+    )
 
     group_rows = _build_financial_group_rows(df, groups_order_rnp)
     if not group_rows:
@@ -512,16 +517,26 @@ def render_financial_metrics_table(
 
     groups_table, groups_styles = _financial_rows_to_dataframe(group_rows)
     st.caption("Подразделения")
-    _render_financial_dataframe(groups_table, groups_styles)
-
-
-def _render_financial_dataframe(table: pd.DataFrame, row_styles: list[str]) -> None:
-    """Компактная таблица на листе; в fullscreen — все строки."""
-    st.dataframe(
-        _style_financial_metrics_table(table, row_styles),
-        column_config=_financial_metrics_column_config(),
-        **compact_dataframe_kwargs(),
+    _render_financial_dataframe(
+        groups_table,
+        groups_styles,
+        container_key=f"{RNP_COMPACT_TABLE_KEY_PREFIX}fin_groups",
     )
+
+
+def _render_financial_dataframe(
+    table: pd.DataFrame,
+    row_styles: list[str],
+    *,
+    container_key: str,
+) -> None:
+    """Компактная таблица: 5 видимых строк и прокрутка; в fullscreen — все строки."""
+    with st.container(key=container_key):
+        st.dataframe(
+            _style_financial_metrics_table(table, row_styles),
+            column_config=_financial_metrics_column_config(),
+            **compact_dataframe_kwargs(),
+        )
 
 
 def _can_build_category_sales(df: pd.DataFrame) -> bool:
@@ -624,7 +639,11 @@ def render_category_sales_table(
     general_rows = _build_category_sales_general_rows(df, category_order_rnp)
     general_table, general_styles = _financial_rows_to_dataframe(general_rows)
     st.caption("Общие")
-    _render_financial_dataframe(general_table, general_styles)
+    _render_financial_dataframe(
+        general_table,
+        general_styles,
+        container_key=f"{RNP_COMPACT_TABLE_KEY_PREFIX}cat_general",
+    )
 
     group_rows = _build_category_sales_group_rows(
         df, category_order_rnp, groups_order_rnp
@@ -634,7 +653,11 @@ def render_category_sales_table(
 
     groups_table, groups_styles = _financial_rows_to_dataframe(group_rows)
     st.caption("Подразделения")
-    _render_financial_dataframe(groups_table, groups_styles)
+    _render_financial_dataframe(
+        groups_table,
+        groups_styles,
+        container_key=f"{RNP_COMPACT_TABLE_KEY_PREFIX}cat_groups",
+    )
 
 
 def _build_turnover_summary(

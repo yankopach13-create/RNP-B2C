@@ -29,6 +29,7 @@ from features.hookah_products import render_hookah_products_block
 from features.table_layout import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     compact_dataframe_height,
+    compact_dataframe_layout_css,
 )
 from features.metrics import (
     render_financial_metrics_table,
@@ -289,26 +290,27 @@ def _render_rnp_b2c_header(
 def _inject_dataframe_fullscreen_styles() -> None:
     """Компактные таблицы на листе; в fullscreen — на всю высоту экрана."""
     st.markdown(
-        """
+        f"""
         <style>
-        [data-testid="stFullScreenFrame"] {
+        {compact_dataframe_layout_css()}
+        [data-testid="stFullScreenFrame"] {{
             align-items: stretch !important;
             justify-content: flex-start !important;
-        }
+        }}
         [data-testid="stFullScreenFrame"] [data-testid="stDataFrame"],
         [data-testid="stFullScreenFrame"] [data-testid="stDataFrameResizable"],
-        [data-testid="stFullScreenFrame"] [data-testid="stDataFrameGlideDataEditor"] {
+        [data-testid="stFullScreenFrame"] [data-testid="stDataFrameGlideDataEditor"] {{
             flex: 1 1 auto !important;
             width: 100% !important;
             min-height: calc(100dvh - 5rem) !important;
             height: calc(100dvh - 5rem) !important;
             max-height: calc(100dvh - 5rem) !important;
-        }
+        }}
         [data-testid="stFullScreenFrame"] .dvn-scroller,
-        [data-testid="stFullScreenFrame"] .dvn-scroll-inner {
+        [data-testid="stFullScreenFrame"] .dvn-scroll-inner {{
             height: 100% !important;
             max-height: 100% !important;
-        }
+        }}
         </style>
         """,
         unsafe_allow_html=True,
