@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import streamlit as st
 
 from ui.upload_help import inject_help_popover_styles, render_section_header_with_help
-
 _XLSX_TYPES = ["xlsx", "xls"]
 
 
@@ -21,6 +20,7 @@ class UploadedFiles:
 
 def render_upload_panel() -> UploadedFiles:
     """Панель загрузки данных."""
+    inject_help_popover_styles()
     container = st.container()
     with container:
         col_sales, col_turnover, col_clients, col_focus = st.columns(4)
@@ -195,7 +195,6 @@ def render_upload_panel() -> UploadedFiles:
 
 
 def _inject_upload_page_styles() -> None:
-    inject_help_popover_styles()
     st.markdown(
         """
         <style>

@@ -24,7 +24,7 @@ from data.references import (
 )
 from features.clients import _has_client_code
 from features.reference_update import append_seller_to_pct_no_bk
-from ui.upload_help import render_section_header_with_help
+from ui.upload_help import inject_help_popover_styles, render_section_header_with_help
 
 COL_PCT_NO_BK = "% без БК"
 COL_SELLER = "Продавец"
@@ -519,6 +519,7 @@ def _read_checks_no_bk_bytes(content: bytes, *, label: str) -> pd.DataFrame | No
 
 
 def _inject_checks_no_bk_upload_styles() -> None:
+    inject_help_popover_styles()
     st.markdown(
         """
         <style>

@@ -22,14 +22,14 @@ _IMAGE_STEM_ALIASES: dict[str, str] = {
     "checks_no_bk": "pct_no_bk",
 }
 
-_HELP_STYLES_INJECTED_KEY = "_upload_help_styles_injected_v2"
+
+def _render_help_html(html: str) -> None:
+    """Один атомарный HTML-блок без обёртки Streamlit в <p>."""
+    st.html(html)
 
 
 def inject_help_popover_styles() -> None:
-    """Стили всплывающих подсказок (один раз за сессию)."""
-    if st.session_state.get(_HELP_STYLES_INJECTED_KEY):
-        return
-    st.session_state[_HELP_STYLES_INJECTED_KEY] = True
+    """Стили всплывающих подсказок — на каждом rerun Streamlit."""
     st.markdown(
         """
         <style>
@@ -71,25 +71,21 @@ def inject_help_popover_styles() -> None:
             background: rgba(255, 255, 255, 0.1);
             border-color: rgba(255, 255, 255, 0.55);
         }
-        .help-popover__panel {
+        .help-popover:not([open]) > .help-popover__panel {
             display: none !important;
-            position: absolute;
-            top: calc(100% + 0.5rem);
-            width: min(68vw, 760px);
-            min-width: min(92vw, 360px);
-            max-width: 92vw;
-            max-height: 72vh;
-            overflow: auto;
-            padding: 0.9rem;
-            border-radius: 0.75rem;
-            border: 1px solid rgba(250, 250, 250, 0.18);
-            background: rgba(15, 15, 15, 0.98);
-            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
-            text-align: left;
-            z-index: 999;
+            visibility: hidden !important;
+            height: 0 !important;
+            overflow: hidden !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: 0 !important;
         }
-        .help-popover[open] .help-popover__panel {
+        .help-popover[open] > .help-popover__panel {
             display: block !important;
+            visibility: visible !important;
+            height: auto !important;
+            overflow: auto !important;
+            padding: 0.9rem !important;
         }
         .help-popover--left .help-popover__panel {
             left: 0;
@@ -103,6 +99,20 @@ def inject_help_popover_styles() -> None:
         .help-popover--right .help-popover__panel {
             right: 0;
             left: auto;
+        }
+        .help-popover__panel {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            width: min(68vw, 760px);
+            min-width: min(92vw, 360px);
+            max-width: 92vw;
+            max-height: 72vh;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(250, 250, 250, 0.18);
+            background: rgba(15, 15, 15, 0.98);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+            text-align: left;
+            z-index: 999;
         }
         .help-popover__caption {
             white-space: pre-line;
@@ -344,8 +354,7 @@ def render_custom_help_popover(
     compact_images: bool = False,
     inline: bool = False,
 ) -> None:
-    inject_help_popover_styles()
-    st.markdown(
+    _render_help_html(
         _build_help_popover_html(
             popover_key=popover_key,
             caption=caption,
@@ -360,7 +369,6 @@ def render_custom_help_popover(
             compact_images=compact_images,
             inline=inline,
         ),
-        unsafe_allow_html=True,
     )
 
 
@@ -383,11 +391,7 @@ def render_section_header_with_help(
     with help_col:
         align_map = {"left": "left", "center": "center", "right": "right"}
         align_style = align_map.get(align, "right")
-        st.markdown(
-            f"<div style='text-align:{align_style};padding-top:6px;'>",
-            unsafe_allow_html=True,
-        )
-        render_custom_help_popover(
+        popover_html = _build_help_popover_html(
             popover_key=popover_key or title.lower().replace(" ", "-"),
             caption=caption,
             image_name=image_name,
@@ -400,4 +404,6 @@ def render_section_header_with_help(
             compact_images=compact_images,
             inline=True,
         )
-        st.markdown("</div>", unsafe_allow_html=True)
+        _render_help_html(
+            f"<div style='text-align:{align_style};padding-top:6px;'>{popover_html}</div>",
+        )
