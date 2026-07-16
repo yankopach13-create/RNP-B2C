@@ -13,7 +13,7 @@ if str(SRC) not in sys.path:
 
 import pandas as pd
 
-from config.constants import CATEGORY_COLUMN_GENERAL, SHOP_GROUP_COLUMN_GENERAL  # noqa: E402
+from config.constants import SHOP_GROUP_COLUMN_GENERAL  # noqa: E402
 from data.loaders import normalize_app_data  # noqa: E402
 from data.references import (  # noqa: E402
     _column_letter,
@@ -336,15 +336,15 @@ def test_ai_report_category_rows() -> None:
 
     sales = pd.DataFrame(
         {
-            "Категория": ["ОЭС 2 мл", "Прочие товары"],
-            CATEGORY_COLUMN_GENERAL: ["ОЭС 2 мл", "Прочие товары"],
-            "Количество": [10, 5],
-            "Неделя": [10, 10],
+            "Категория": ["ОЭС 2 мл", "БКС", "Прочие товары"],
+            "Количество": [10, 3, 5],
+            "Неделя": [10, 10, 10],
         }
     )
     table = build_ai_report_table(sales, None, report_week=10)
     values = dict(zip(table["Метрика"], table.iloc[:, 1]))
     _assert(values["ОЭС 2 мл, шт."] == "10", "ai oes qty")
+    _assert(values["Кальянные смеси"] == "3", "ai bks qty")
     _assert(values["Прочие товары, шт."] == "5", "ai other qty")
 
 

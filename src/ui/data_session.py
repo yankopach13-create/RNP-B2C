@@ -22,7 +22,7 @@ DF_REPORT_CACHE_VERSION_KEY = "df_report_cache_version"
 TURNOVER_TABLE_KEY = "turnover_table"
 TURNOVER_CACHE_VERSION_KEY = "turnover_cache_version"
 # Увеличивайте при изменениях расчётов — сбрасывает session_state после деплоя.
-APP_LOGIC_VERSION = "2026-07-16-ai-report-fixed-categories"
+APP_LOGIC_VERSION = "2026-07-16-ai-report-rnp-category-values"
 APP_LOGIC_VERSION_KEY = "app_logic_version"
 
 

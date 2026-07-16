@@ -1,4 +1,4 @@
-"""Блок «ИИ отчёт B2C» — метрики из РНП B2C в заданном порядке (как Общий РНП)."""
+"""Блок «ИИ отчёт B2C» — метрики из РНП B2C в заданном порядке."""
 
 from __future__ import annotations
 
@@ -14,15 +14,11 @@ from features.general_rnp import (
     _load_client_metrics,
     _resolve_report_week,
     _split_sales_frames,
-    can_build_general_category_sales,
     category_qty_from_totals,
-    general_category_totals,
 )
-from features.metrics import _fmt_fin_int
+from features.metrics import _can_build_category_sales, _category_totals, _fmt_fin_int
 
-# Фиксированный список категорий ИИ отчёта (под «Списано бонусов»).
-# Значения — как в Общем РНП (столбец «Категория товара Общий РНП:»), без Oxva stick
-# и без агрегата «Кальянная продукция» (только «Кальянные смеси»).
+# Подпись в ИИ отчёте → категория в блоке «Продажи категорий» РНП B2C (столбец «Категория»).
 _AI_CATEGORY_METRIC_ROWS: list[tuple[str, str | tuple[str, ...]]] = [
     ("ОЭС 2 мл, шт.", "ОЭС 2 мл"),
     ("ОЭС 4 мл, шт.", "ОЭС 4 мл"),
@@ -33,7 +29,7 @@ _AI_CATEGORY_METRIC_ROWS: list[tuple[str, str | tuple[str, ...]]] = [
     ("Закрытые pod-системы, шт.", "Закрытая под-система"),
     ("Картриджи с жидкостью, шт.", "Картриджи с жидкостью"),
     ("Никотиновые паучи, шт.", "Никотиновые паучи"),
-    ("Кальянные смеси", "Кальянные смеси"),
+    ("Кальянные смеси", "БКС"),
     ("Прочие товары, шт.", "Прочие товары"),
 ]
 
@@ -47,7 +43,7 @@ _AI_AVG_CHECK_METRICS = frozenset(
 
 
 def ai_category_metric_rows() -> list[tuple[str, str | tuple[str, ...]]]:
-    """Строки количества в ИИ отчёте: (подпись, ключ суммирования Общего РНП)."""
+    """Строки количества в ИИ отчёте: (подпись, ключ категории РНП B2C)."""
     return list(_AI_CATEGORY_METRIC_ROWS)
 
 
@@ -108,9 +104,7 @@ def build_ai_report_table(
     )
     _, df_week = _split_sales_frames(sales_df, report_week)
     totals_week = (
-        general_category_totals(df_week)
-        if can_build_general_category_sales(df_week)
-        else None
+        _category_totals(df_week) if _can_build_category_sales(df_week) else None
     )
 
     target_rev_week = non_target_rev_week = ""
