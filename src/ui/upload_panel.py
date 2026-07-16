@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import streamlit as st
 
-from ui.upload_help import render_section_header_with_help
+from ui.upload_help import inject_help_popover_styles, render_section_header_with_help
 
 _XLSX_TYPES = ["xlsx", "xls"]
 
@@ -195,176 +195,10 @@ def render_upload_panel() -> UploadedFiles:
 
 
 def _inject_upload_page_styles() -> None:
+    inject_help_popover_styles()
     st.markdown(
         """
         <style>
-        .help-popover {
-            position: relative;
-            display: inline-block;
-            width: 100%;
-            text-align: right;
-            z-index: 10;
-        }
-        .help-popover--inline {
-            width: auto;
-            text-align: left;
-            flex-shrink: 0;
-        }
-        .help-popover__toggle {
-            position: absolute;
-            opacity: 0;
-            pointer-events: none;
-        }
-        .help-popover__trigger {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 2rem;
-            height: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 0.5rem;
-            color: rgba(250, 250, 250, 0.95);
-            cursor: pointer;
-            user-select: none;
-            font-size: 1.05rem;
-            line-height: 1;
-            background: rgba(255, 255, 255, 0.04);
-            transition: background-color 0.15s ease, border-color 0.15s ease;
-            position: relative;
-            z-index: 1000;
-        }
-        .help-popover__trigger:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.55);
-        }
-        .help-popover__backdrop {
-            display: none;
-            position: fixed;
-            inset: 0;
-            z-index: 998;
-            background: transparent;
-        }
-        .help-popover__panel {
-            display: none;
-            position: absolute;
-            top: calc(100% + 0.5rem);
-            width: min(68vw, 760px);
-            min-width: min(92vw, 360px);
-            max-width: 92vw;
-            max-height: 72vh;
-            overflow: auto;
-            padding: 0.9rem;
-            border-radius: 0.75rem;
-            border: 1px solid rgba(250, 250, 250, 0.18);
-            background: rgba(15, 15, 15, 0.98);
-            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
-            text-align: left;
-            z-index: 999;
-        }
-        .help-popover--left .help-popover__panel {
-            left: 0;
-            right: auto;
-        }
-        .help-popover--center .help-popover__panel {
-            left: 50%;
-            right: auto;
-            transform: translateX(-50%);
-        }
-        .help-popover--right .help-popover__panel {
-            right: 0;
-            left: auto;
-        }
-        .help-popover__toggle:checked ~ .help-popover__backdrop {
-            display: block;
-        }
-        .help-popover__toggle:checked ~ .help-popover__panel {
-            display: block;
-        }
-        .help-popover__caption {
-            white-space: pre-line;
-            font-size: 0.95rem;
-            color: rgba(250, 250, 250, 0.86);
-            margin-bottom: 0.75rem;
-        }
-        .help-popover__col-title {
-            font-size: 1rem;
-            font-weight: 700;
-            color: rgba(250, 250, 250, 0.95);
-            margin-bottom: 0.65rem;
-        }
-        .help-popover__split-columns {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.3rem;
-            margin-bottom: 0.25rem;
-        }
-        .help-popover__split-columns .help-popover__paragraph {
-            margin-bottom: 0.65rem;
-        }
-        .help-popover__image-wrapper {
-            margin-bottom: 1rem;
-        }
-        .help-popover__image {
-            width: 100%;
-            height: auto;
-            border-radius: 0.5rem;
-            border: 1px solid rgba(250, 250, 250, 0.16);
-        }
-        .help-popover--compact .help-popover__image {
-            max-height: 280px;
-            object-fit: contain;
-            background: rgba(0, 0, 0, 0.15);
-        }
-        .help-popover__split {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.3rem;
-        }
-        .help-popover__split-text {
-            display: block;
-        }
-        .help-popover__row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.3rem;
-            margin-bottom: 0.75rem;
-        }
-        .help-popover__paragraph {
-            white-space: pre-line;
-            font-size: 0.95rem;
-            color: rgba(250, 250, 250, 0.86);
-            min-height: 1.45rem;
-        }
-        .help-popover__split-col {
-            min-width: 0;
-        }
-        .help-popover__split-images .help-popover__split-col {
-            display: flex;
-            align-items: flex-start;
-        }
-        .help-popover__split-images .help-popover__image-wrapper {
-            width: 100%;
-        }
-        @media (max-width: 1100px) {
-            .help-popover__split {
-                grid-template-columns: 1fr;
-            }
-        }
-        .help-popover__download {
-            display: inline-block;
-            margin-top: 0.55rem;
-            color: #d95f5f;
-            text-decoration: none;
-            font-weight: 600;
-        }
-        .help-popover__download:hover {
-            text-decoration: underline;
-        }
-        .help-popover__warning {
-            color: #ff8f8f;
-            font-size: 0.92rem;
-            margin-bottom: 0.85rem;
-        }
         .upload-mini-title {
             font-size: 0.92rem;
             font-weight: 600;

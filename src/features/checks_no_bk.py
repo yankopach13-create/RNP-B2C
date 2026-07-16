@@ -24,6 +24,7 @@ from data.references import (
 )
 from features.clients import _has_client_code
 from features.reference_update import append_seller_to_pct_no_bk
+from ui.upload_help import render_section_header_with_help
 
 COL_PCT_NO_BK = "% без БК"
 COL_SELLER = "Продавец"
@@ -584,6 +585,20 @@ def _render_checks_no_bk_block_impl(
     st.markdown("---")
     st.markdown('<div class="checks-no-bk-block">', unsafe_allow_html=True)
     _inject_checks_no_bk_upload_styles()
+
+    render_section_header_with_help(
+        title="Динамика чеков без бк %",
+        image_name="pct_no_bk.png",
+        caption=(
+            "Зайдите в Qlik под профилем User2.<br>"
+            'В анализе чеков перейдите в закладку '
+            '"АВТОМАТИЗАЦИЯ РНП B2С ( % чеков без бк)".<br><br>'
+            "В фильтрах отберите актуальную неделю и скачайте отчёт "
+            "без форматирования (не нажимайте галочку при скачивании).<br><br>"
+            'Вставьте скачанный документ в контейнер «% чеков без бк».'
+        ),
+        align="left",
+    )
 
     uploaded = st.file_uploader(
         "Загрузите Excel",
