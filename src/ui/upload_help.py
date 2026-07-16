@@ -14,6 +14,10 @@ _IMAGE_STEM_ALIASES: dict[str, str] = {
     "client_segments": "segments",
     "sales": "sales",
     "turnover": "turnover",
+    "hookah": "hookah",
+    "focus_hookah": "hookah",
+    "fill_free": "fill_free",
+    "focus_fill_free": "fill_free",
 }
 
 
