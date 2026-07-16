@@ -529,6 +529,16 @@ def _inject_checks_no_bk_upload_styles() -> None:
         .checks-no-bk-block div[data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] p {
             display: none !important;
         }
+        .checks-no-bk-upload .help-popover {
+            width: auto;
+            text-align: right;
+        }
+        .checks-no-bk-upload .help-popover__panel {
+            display: none;
+        }
+        .checks-no-bk-upload .help-popover__toggle:checked ~ .help-popover__panel {
+            display: block;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -586,30 +596,36 @@ def _render_checks_no_bk_block_impl(
     st.markdown('<div class="checks-no-bk-block">', unsafe_allow_html=True)
     _inject_checks_no_bk_upload_styles()
 
-    render_section_header_with_help(
-        title="Динамика чеков без бк %",
-        image_name="pct_no_bk.png",
-        caption=(
-            "Зайдите в Qlik под профилем User2.<br>"
-            'В анализе чеков перейдите в закладку '
-            '"АВТОМАТИЗАЦИЯ РНП B2С ( % чеков без бк)".<br><br>'
-            "В фильтрах отберите актуальную неделю и скачайте отчёт "
-            "без форматирования (не нажимайте галочку при скачивании).<br><br>"
-            'Вставьте скачанный документ в контейнер «% чеков без бк».'
-        ),
-        align="left",
-    )
+    col_upload, _col_spacer = st.columns([1, 3], gap="small")
+    with col_upload:
+        st.markdown('<div class="checks-no-bk-upload">', unsafe_allow_html=True)
+        render_section_header_with_help(
+            title="Динамика чеков без бк %",
+            image_name="pct_no_bk.png",
+            caption=(
+                "Зайдите в Qlik под профилем User2.<br>"
+                'В анализе чеков перейдите в закладку '
+                '"АВТОМАТИЗАЦИЯ РНП B2С ( % чеков без бк)".<br><br>'
+                "В фильтрах отберите актуальную неделю и скачайте отчёт "
+                "без форматирования (не нажимайте галочку при скачивании).<br><br>"
+                'Вставьте скачанный документ в контейнер «% чеков без бк».'
+            ),
+            align="right",
+            popover_key="checks-no-bk-dynamics",
+        )
 
-    uploaded = st.file_uploader(
-        "Загрузите Excel",
-        type=_XLSX_TYPES,
-        key="checks_no_bk_uploader",
-        label_visibility="collapsed",
-        help=(
-            "Столбцы: Магазин, Кассир, количество чеков, Код клиента. "
-            "Чек без БК — строка с пустым кодом клиента."
-        ),
-    )
+        uploaded = st.file_uploader(
+            "Загрузите Excel",
+            type=_XLSX_TYPES,
+            key="checks_no_bk_uploader",
+            label_visibility="collapsed",
+            help=(
+                "Столбцы: Магазин, Кассир, количество чеков, Код клиента. "
+                "Чек без БК — строка с пустым кодом клиента."
+            ),
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
     if uploaded is not None:
         st.session_state[_SESSION_BYTES_KEY] = uploaded.getvalue()
 

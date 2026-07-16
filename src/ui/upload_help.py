@@ -355,6 +355,7 @@ def render_custom_help_popover(
     align: str = "right",
     two_column_layout: bool = False,
     compact_images: bool = False,
+    inline: bool = False,
 ) -> None:
     inject_help_popover_styles()
     st.markdown(
@@ -370,6 +371,7 @@ def render_custom_help_popover(
             align=align,
             two_column_layout=two_column_layout,
             compact_images=compact_images,
+            inline=inline,
         ),
         unsafe_allow_html=True,
     )
@@ -386,6 +388,7 @@ def render_section_header_with_help(
     align: str = "right",
     two_column_layout: bool = False,
     compact_images: bool = False,
+    popover_key: str | None = None,
 ) -> None:
     title_col, help_col = st.columns([0.82, 0.18], gap="small")
     with title_col:
@@ -393,7 +396,7 @@ def render_section_header_with_help(
     with help_col:
         st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
         render_custom_help_popover(
-            popover_key=title.lower().replace(" ", "-"),
+            popover_key=popover_key or title.lower().replace(" ", "-"),
             caption=caption,
             image_name=image_name,
             second_image_name=second_image_name,
@@ -403,4 +406,5 @@ def render_section_header_with_help(
             align=align,
             two_column_layout=two_column_layout,
             compact_images=compact_images,
+            inline=True,
         )
