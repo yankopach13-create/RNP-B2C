@@ -22,7 +22,7 @@ _IMAGE_STEM_ALIASES: dict[str, str] = {
     "checks_no_bk": "pct_no_bk",
 }
 
-_HELP_STYLES_INJECTED_KEY = "_upload_help_styles_injected"
+_HELP_STYLES_INJECTED_KEY = "_upload_help_styles_injected_v2"
 
 
 def inject_help_popover_styles() -> None:
@@ -36,19 +36,11 @@ def inject_help_popover_styles() -> None:
         .help-popover {
             position: relative;
             display: inline-block;
-            width: 100%;
-            text-align: right;
+            width: auto;
             z-index: 10;
         }
         .help-popover--inline {
-            width: auto;
-            text-align: left;
             flex-shrink: 0;
-        }
-        .help-popover__toggle {
-            position: absolute;
-            opacity: 0;
-            pointer-events: none;
         }
         .help-popover__trigger {
             display: inline-flex;
@@ -67,20 +59,20 @@ def inject_help_popover_styles() -> None:
             transition: background-color 0.15s ease, border-color 0.15s ease;
             position: relative;
             z-index: 1000;
+            list-style: none;
+        }
+        .help-popover__trigger::-webkit-details-marker {
+            display: none;
+        }
+        .help-popover__trigger::marker {
+            content: "";
         }
         .help-popover__trigger:hover {
             background: rgba(255, 255, 255, 0.1);
             border-color: rgba(255, 255, 255, 0.55);
         }
-        .help-popover__backdrop {
-            display: none;
-            position: fixed;
-            inset: 0;
-            z-index: 998;
-            background: transparent;
-        }
         .help-popover__panel {
-            display: none;
+            display: none !important;
             position: absolute;
             top: calc(100% + 0.5rem);
             width: min(68vw, 760px);
@@ -96,6 +88,9 @@ def inject_help_popover_styles() -> None:
             text-align: left;
             z-index: 999;
         }
+        .help-popover[open] .help-popover__panel {
+            display: block !important;
+        }
         .help-popover--left .help-popover__panel {
             left: 0;
             right: auto;
@@ -108,12 +103,6 @@ def inject_help_popover_styles() -> None:
         .help-popover--right .help-popover__panel {
             right: 0;
             left: auto;
-        }
-        .help-popover__toggle:checked ~ .help-popover__backdrop {
-            display: block;
-        }
-        .help-popover__toggle:checked ~ .help-popover__panel {
-            display: block;
         }
         .help-popover__caption {
             white-space: pre-line;
@@ -333,13 +322,11 @@ def _build_help_popover_html(
     inline_class = " help-popover--inline" if inline else ""
 
     return (
-        f"<div class='help-popover help-popover--{align}{compact_class}{inline_class}' "
+        f"<details class='help-popover help-popover--{align}{compact_class}{inline_class}' "
         f"id='help-popover-{popover_key}'>"
-        f"<input type='checkbox' id='help-toggle-{popover_key}' class='help-popover__toggle' />"
-        f"<label for='help-toggle-{popover_key}' class='help-popover__trigger'>{trigger_label}</label>"
-        f"<label for='help-toggle-{popover_key}' class='help-popover__backdrop' aria-hidden='true'></label>"
+        f"<summary class='help-popover__trigger'>{trigger_label}</summary>"
         f"<div class='help-popover__panel'>{''.join(parts)}</div>"
-        "</div>"
+        "</details>"
     )
 
 
@@ -390,11 +377,16 @@ def render_section_header_with_help(
     compact_images: bool = False,
     popover_key: str | None = None,
 ) -> None:
-    title_col, help_col = st.columns([0.82, 0.18], gap="small")
+    title_col, help_col = st.columns([0.92, 0.08], gap="small")
     with title_col:
         st.subheader(title)
     with help_col:
-        st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+        align_map = {"left": "left", "center": "center", "right": "right"}
+        align_style = align_map.get(align, "right")
+        st.markdown(
+            f"<div style='text-align:{align_style};padding-top:6px;'>",
+            unsafe_allow_html=True,
+        )
         render_custom_help_popover(
             popover_key=popover_key or title.lower().replace(" ", "-"),
             caption=caption,
@@ -408,3 +400,4 @@ def render_section_header_with_help(
             compact_images=compact_images,
             inline=True,
         )
+        st.markdown("</div>", unsafe_allow_html=True)

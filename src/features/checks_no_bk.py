@@ -531,13 +531,6 @@ def _inject_checks_no_bk_upload_styles() -> None:
         }
         .checks-no-bk-upload .help-popover {
             width: auto;
-            text-align: right;
-        }
-        .checks-no-bk-upload .help-popover__panel {
-            display: none;
-        }
-        .checks-no-bk-upload .help-popover__toggle:checked ~ .help-popover__panel {
-            display: block;
         }
         </style>
         """,
