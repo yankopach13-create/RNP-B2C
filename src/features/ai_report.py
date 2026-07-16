@@ -10,14 +10,14 @@ from features.clients import COL_METRIC
 from features.general_rnp import (
     COL_REPORT_WEEK_PREFIX,
     _apply_sheets_number_format,
-    _can_build_general_category_sales,
-    _category_qty,
     _financial_values,
-    _general_category_metric_rows,
-    _general_category_totals,
     _load_client_metrics,
     _resolve_report_week,
     _split_sales_frames,
+    can_build_general_category_sales,
+    category_qty_from_totals,
+    general_category_metric_rows,
+    general_category_totals,
 )
 from features.metrics import _fmt_fin_int
 
@@ -28,6 +28,29 @@ _AI_AVG_CHECK_METRICS = frozenset(
         "средний чек клиентов без бонусной карты",
     }
 )
+
+
+def _resolve_category_order_general(
+    category_order_general: list[str] | None,
+) -> list[str] | None:
+    if category_order_general is not None:
+        return list(category_order_general)
+    try:
+        from data.loaders import normalize_app_data
+        from ui.data_session import APP_DATA_KEY
+
+        data = normalize_app_data(st.session_state.get(APP_DATA_KEY))
+        if data is not None and data.category_order_general:
+            return list(data.category_order_general)
+    except Exception:
+        pass
+    try:
+        from data.loaders import _load_category_order
+
+        _, general = _load_category_order()
+        return general
+    except Exception:
+        return None
 
 
 def render_ai_report_b2c(
@@ -84,14 +107,15 @@ def build_ai_report_table(
         if report_week is not None
         else COL_REPORT_WEEK_PREFIX
     )
+    category_order = _resolve_category_order_general(category_order_general)
 
     client_metrics = _load_client_metrics(
         checks_clients_df, client_segments_df, report_week
     )
     _, df_week = _split_sales_frames(sales_df, report_week)
     totals_week = (
-        _general_category_totals(df_week)
-        if _can_build_general_category_sales(df_week)
+        general_category_totals(df_week)
+        if can_build_general_category_sales(df_week)
         else None
     )
 
@@ -140,8 +164,8 @@ def build_ai_report_table(
     client_row("Начислено бонусов", "credited")
     client_row("Списано бонусов", "spent")
 
-    for label, source in _general_category_metric_rows(category_order_general):
-        rows.append([label, _category_qty(totals_week, source)])
+    for label, source in general_category_metric_rows(category_order):
+        rows.append([label, category_qty_from_totals(totals_week, source)])
 
     table = pd.DataFrame(rows, columns=[COL_METRIC, week_col])
     return _apply_sheets_number_format(

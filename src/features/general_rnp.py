@@ -359,7 +359,32 @@ def _load_client_metrics(
     return metrics
 
 
+def general_category_metric_rows(
+    category_order_general: list[str] | None,
+) -> list[tuple[str, str | tuple[str, ...]]]:
+    """Строки количества по категориям Общего РНП (подпись, ключ суммирования)."""
+    return _general_category_metric_rows(category_order_general)
+
+
+def general_category_totals(df: pd.DataFrame) -> pd.Series:
+    """Количество по категориям из «Категория товара Общий РНП:»."""
+    return _general_category_totals(df)
+
+
+def can_build_general_category_sales(df: pd.DataFrame | None) -> bool:
+    return _can_build_general_category_sales(df)
+
+
+def category_qty_from_totals(
+    totals: pd.Series | None,
+    category: str | tuple[str, ...],
+) -> str:
+    return _category_qty(totals, category)
+
+
 def _can_build_general_category_sales(df: pd.DataFrame | None) -> bool:
+    if df is None:
+        return False
     return (
         _can_build_category_sales(df)
         and CATEGORY_COLUMN_GENERAL in df.columns
