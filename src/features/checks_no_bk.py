@@ -604,7 +604,7 @@ def _render_checks_no_bk_block_impl(
                 "без форматирования (не нажимайте галочку при скачивании).<br><br>"
                 'Вставьте скачанный документ в контейнер «% чеков без бк».'
             ),
-            align="right",
+            align="left",
             popover_key="checks-no-bk-dynamics",
         )
 

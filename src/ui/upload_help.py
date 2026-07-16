@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import html as html_lib
 from pathlib import Path
 
 import streamlit as st
@@ -33,6 +34,21 @@ def inject_help_popover_styles() -> None:
     st.markdown(
         """
         <style>
+        .help-section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+            margin: 0 0 0.35rem 0;
+        }
+        .help-section-header__title {
+            margin: 0;
+            padding: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+            line-height: 1.2;
+            color: rgb(250, 250, 250);
+        }
         .help-popover {
             position: relative;
             display: inline-block;
@@ -380,30 +396,28 @@ def render_section_header_with_help(
     second_caption: str = "",
     caption_title: str = "",
     second_caption_title: str = "",
-    align: str = "right",
+    align: str = "left",
     two_column_layout: bool = False,
     compact_images: bool = False,
     popover_key: str | None = None,
 ) -> None:
-    title_col, help_col = st.columns([0.92, 0.08], gap="small")
-    with title_col:
-        st.subheader(title)
-    with help_col:
-        align_map = {"left": "left", "center": "center", "right": "right"}
-        align_style = align_map.get(align, "right")
-        popover_html = _build_help_popover_html(
-            popover_key=popover_key or title.lower().replace(" ", "-"),
-            caption=caption,
-            image_name=image_name,
-            second_image_name=second_image_name,
-            second_caption=second_caption,
-            caption_title=caption_title,
-            second_caption_title=second_caption_title,
-            align=align,
-            two_column_layout=two_column_layout,
-            compact_images=compact_images,
-            inline=True,
-        )
-        _render_help_html(
-            f"<div style='text-align:{align_style};padding-top:6px;'>{popover_html}</div>",
-        )
+    popover_html = _build_help_popover_html(
+        popover_key=popover_key or title.lower().replace(" ", "-"),
+        caption=caption,
+        image_name=image_name,
+        second_image_name=second_image_name,
+        second_caption=second_caption,
+        caption_title=caption_title,
+        second_caption_title=second_caption_title,
+        align=align,
+        two_column_layout=two_column_layout,
+        compact_images=compact_images,
+        inline=True,
+    )
+    safe_title = html_lib.escape(title)
+    _render_help_html(
+        "<div class='help-section-header'>"
+        f"<h3 class='help-section-header__title'>{safe_title}</h3>"
+        f"{popover_html}"
+        "</div>",
+    )
