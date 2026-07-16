@@ -16,10 +16,26 @@ from features.general_rnp import (
     _split_sales_frames,
     can_build_general_category_sales,
     category_qty_from_totals,
-    general_category_metric_rows,
     general_category_totals,
 )
 from features.metrics import _fmt_fin_int
+
+# Фиксированный список категорий ИИ отчёта (под «Списано бонусов»).
+# Значения — как в Общем РНП (столбец «Категория товара Общий РНП:»), без Oxva stick
+# и без агрегата «Кальянная продукция» (только «Кальянные смеси»).
+_AI_CATEGORY_METRIC_ROWS: list[tuple[str, str | tuple[str, ...]]] = [
+    ("ОЭС 2 мл, шт.", "ОЭС 2 мл"),
+    ("ОЭС 4 мл, шт.", "ОЭС 4 мл"),
+    ("ОЭС 10 мл, шт", "ОЭС 10 мл"),
+    ("Жидкость 25 мл, шт.", "Жидкость 25 мл"),
+    ("Pod-системы, шт.", "Под-системы"),
+    ("Расходники, шт.", "Расходники"),
+    ("Закрытые pod-системы, шт.", "Закрытая под-система"),
+    ("Картриджи с жидкостью, шт.", "Картриджи с жидкостью"),
+    ("Никотиновые паучи, шт.", "Никотиновые паучи"),
+    ("Кальянные смеси", "Кальянные смеси"),
+    ("Прочие товары, шт.", "Прочие товары"),
+]
 
 _AI_AVG_CHECK_METRICS = frozenset(
     {
@@ -30,27 +46,9 @@ _AI_AVG_CHECK_METRICS = frozenset(
 )
 
 
-def _resolve_category_order_general(
-    category_order_general: list[str] | None,
-) -> list[str] | None:
-    if category_order_general is not None:
-        return list(category_order_general)
-    try:
-        from data.loaders import normalize_app_data
-        from ui.data_session import APP_DATA_KEY
-
-        data = normalize_app_data(st.session_state.get(APP_DATA_KEY))
-        if data is not None and data.category_order_general:
-            return list(data.category_order_general)
-    except Exception:
-        pass
-    try:
-        from data.loaders import _load_category_order
-
-        _, general = _load_category_order()
-        return general
-    except Exception:
-        return None
+def ai_category_metric_rows() -> list[tuple[str, str | tuple[str, ...]]]:
+    """Строки количества в ИИ отчёте: (подпись, ключ суммирования Общего РНП)."""
+    return list(_AI_CATEGORY_METRIC_ROWS)
 
 
 def render_ai_report_b2c(
@@ -59,7 +57,6 @@ def render_ai_report_b2c(
     *,
     client_segments_df: pd.DataFrame | None = None,
     report_week: int | None = None,
-    category_order_general: list[str] | None = None,
     excise_liquid_report_qty: float = 0.0,
 ) -> None:
     """Таблица метрик ИИ отчёта: Метрика / Отчётная неделя."""
@@ -76,7 +73,6 @@ def render_ai_report_b2c(
         client_segments_df=client_segments_df,
         report_week=report_week,
         week_column_label=week_col,
-        category_order_general=category_order_general,
         excise_liquid_report_qty=excise_liquid_report_qty,
     )
     st.dataframe(
@@ -97,7 +93,6 @@ def build_ai_report_table(
     client_segments_df: pd.DataFrame | None = None,
     report_week: int | None = None,
     week_column_label: str | None = None,
-    category_order_general: list[str] | None = None,
     excise_liquid_report_qty: float = 0.0,
 ) -> pd.DataFrame:
     """Собирает строки ИИ отчёта, копируя значения из расчётов РНП B2C."""
@@ -107,7 +102,6 @@ def build_ai_report_table(
         if report_week is not None
         else COL_REPORT_WEEK_PREFIX
     )
-    category_order = _resolve_category_order_general(category_order_general)
 
     client_metrics = _load_client_metrics(
         checks_clients_df, client_segments_df, report_week
@@ -164,7 +158,7 @@ def build_ai_report_table(
     client_row("Начислено бонусов", "credited")
     client_row("Списано бонусов", "spent")
 
-    for label, source in general_category_metric_rows(category_order):
+    for label, source in ai_category_metric_rows():
         rows.append([label, category_qty_from_totals(totals_week, source)])
 
     table = pd.DataFrame(rows, columns=[COL_METRIC, week_col])

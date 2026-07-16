@@ -13,7 +13,7 @@ if str(SRC) not in sys.path:
 
 import pandas as pd
 
-from config.constants import SHOP_GROUP_COLUMN_GENERAL  # noqa: E402
+from config.constants import CATEGORY_COLUMN_GENERAL, SHOP_GROUP_COLUMN_GENERAL  # noqa: E402
 from data.loaders import normalize_app_data  # noqa: E402
 from data.references import (  # noqa: E402
     _column_letter,
@@ -28,6 +28,7 @@ from features.categories import (  # noqa: E402
 from features.data_prep import collect_new_shops, collect_unmatched_products  # noqa: E402
 from features.fill_free_products import build_fill_free_table  # noqa: E402
 from features.hookah_products import build_hookah_products_table  # noqa: E402
+from features.ai_report import ai_category_metric_rows, build_ai_report_table  # noqa: E402
 from features.checks_no_bk import (  # noqa: E402
     build_groups_no_bk_table,
     build_sellers_no_bk_table,
@@ -325,6 +326,28 @@ def test_checks_no_bk_new_sellers() -> None:
     _assert(len(df2) == len(df), "no extra row on duplicate")
 
 
+def test_ai_report_category_rows() -> None:
+    labels = [label for label, _ in ai_category_metric_rows()]
+    _assert(labels[0] == "ОЭС 2 мл, шт.", "first ai category")
+    _assert(labels[-1] == "Прочие товары, шт.", "last ai category")
+    _assert("Oxva stick" not in labels, "no oxva stick")
+    _assert("Кальянная продукция" not in labels, "no hookah aggregate")
+    _assert(labels.count("Кальянные смеси") == 1, "hookah mixes row")
+
+    sales = pd.DataFrame(
+        {
+            "Категория": ["ОЭС 2 мл", "Прочие товары"],
+            CATEGORY_COLUMN_GENERAL: ["ОЭС 2 мл", "Прочие товары"],
+            "Количество": [10, 5],
+            "Неделя": [10, 10],
+        }
+    )
+    table = build_ai_report_table(sales, None, report_week=10)
+    values = dict(zip(table["Метрика"], table.iloc[:, 1]))
+    _assert(values["ОЭС 2 мл, шт."] == "10", "ai oes qty")
+    _assert(values["Прочие товары, шт."] == "5", "ai other qty")
+
+
 def test_checks_no_bk_pcts() -> None:
     ref = pd.DataFrame(
         {
@@ -372,6 +395,7 @@ OFFLINE_TESTS = [
     test_hookah_sales_exact_match,
     test_hookah_products_table,
     test_fill_free_products_table,
+    test_ai_report_category_rows,
     test_excel_export_hookah_and_fill_free_sheets,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,
