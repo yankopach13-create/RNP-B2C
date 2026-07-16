@@ -10,46 +10,16 @@ from features.clients import COL_METRIC
 from features.general_rnp import (
     COL_REPORT_WEEK_PREFIX,
     _apply_sheets_number_format,
+    _can_build_general_category_sales,
+    _category_qty,
     _financial_values,
+    _general_category_metric_rows,
+    _general_category_totals,
     _load_client_metrics,
     _resolve_report_week,
     _split_sales_frames,
 )
-from features.metrics import (
-    _can_build_category_sales,
-    _category_totals,
-    _fmt_fin_int,
-    _fmt_int,
-)
-
-# Подпись в ИИ отчёте → ключ(и) категории РНП (столбец «Категория» в продажах).
-_AI_CATEGORY_MAP: list[tuple[str, str | tuple[str, ...]]] = [
-    ("Одноразовые электронные сигареты ( 2 мл )", "ОЭС 2 мл"),
-    ("Одноразовые электронные сигареты ( 10 мл )", "ОЭС 10 мл"),
-    ("Жидкость 25 мл.", "Жидкость 25 мл"),
-    ("Под-системы", "Под-системы"),
-    ("Расходники", "Расходники"),
-    ("Закрытые под-системы", "Закрытая под-система"),
-    ("Картриджи с жидкостью", "Картриджи с жидкостью"),
-    ("Никотиновые паучи", "Никотиновые паучи"),
-    (
-        "Кальянные смеси",
-        ("Кальянные смеси", "БКС", "1.1 Бестабачная Смесь"),
-    ),
-    (
-        "Прочие товары",
-        (
-            "Прочие товары",
-            "Уголь",
-            "Кальяны",
-            "Кальян",
-            "Аксессуары",
-            "1.2 Уголь для кальяна",
-            "1.4 Кальяны",
-            "1.3 Аксессуары для Кальяна",
-        ),
-    ),
-]
+from features.metrics import _fmt_fin_int
 
 _AI_AVG_CHECK_METRICS = frozenset(
     {
@@ -66,6 +36,7 @@ def render_ai_report_b2c(
     *,
     client_segments_df: pd.DataFrame | None = None,
     report_week: int | None = None,
+    category_order_general: list[str] | None = None,
     excise_liquid_report_qty: float = 0.0,
 ) -> None:
     """Таблица метрик ИИ отчёта: Метрика / Отчётная неделя."""
@@ -82,6 +53,7 @@ def render_ai_report_b2c(
         client_segments_df=client_segments_df,
         report_week=report_week,
         week_column_label=week_col,
+        category_order_general=category_order_general,
         excise_liquid_report_qty=excise_liquid_report_qty,
     )
     st.dataframe(
@@ -102,6 +74,7 @@ def build_ai_report_table(
     client_segments_df: pd.DataFrame | None = None,
     report_week: int | None = None,
     week_column_label: str | None = None,
+    category_order_general: list[str] | None = None,
     excise_liquid_report_qty: float = 0.0,
 ) -> pd.DataFrame:
     """Собирает строки ИИ отчёта, копируя значения из расчётов РНП B2C."""
@@ -117,7 +90,9 @@ def build_ai_report_table(
     )
     _, df_week = _split_sales_frames(sales_df, report_week)
     totals_week = (
-        _category_totals(df_week) if _can_build_category_sales(df_week) else None
+        _general_category_totals(df_week)
+        if _can_build_general_category_sales(df_week)
+        else None
     )
 
     target_rev_week = non_target_rev_week = ""
@@ -165,8 +140,8 @@ def build_ai_report_table(
     client_row("Начислено бонусов", "credited")
     client_row("Списано бонусов", "spent")
 
-    for label, rnp_cat in _AI_CATEGORY_MAP:
-        rows.append([label, _category_qty(totals_week, rnp_cat)])
+    for label, source in _general_category_metric_rows(category_order_general):
+        rows.append([label, _category_qty(totals_week, source)])
 
     table = pd.DataFrame(rows, columns=[COL_METRIC, week_col])
     return _apply_sheets_number_format(
@@ -174,11 +149,3 @@ def build_ai_report_table(
         (week_col,),
         avg_check_metrics=_AI_AVG_CHECK_METRICS,
     )
-
-
-def _category_qty(totals: pd.Series | None, category: str | tuple[str, ...]) -> str:
-    if totals is None:
-        return ""
-    names = (category,) if isinstance(category, str) else category
-    qty = sum(float(totals[name]) for name in names if name in totals.index)
-    return _fmt_int(qty)

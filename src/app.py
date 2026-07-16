@@ -257,6 +257,7 @@ def _render_rnp_b2c_header(
             data.checks_clients,
             client_segments_df=data.client_segments,
             report_week=report_week,
+            category_order_general=data.category_order_general,
             excise_liquid_report_qty=excise_report,
         )
 
