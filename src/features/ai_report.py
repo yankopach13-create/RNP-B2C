@@ -14,11 +14,15 @@ from features.general_rnp import (
     _load_client_metrics,
     _resolve_report_week,
     _split_sales_frames,
-    category_qty_from_totals,
 )
-from features.metrics import _can_build_category_sales, _category_totals, _fmt_fin_int
+from features.metrics import (
+    _can_build_category_sales,
+    _category_totals,
+    _fmt_fin_int,
+    _fmt_int,
+)
 
-# Подпись в ИИ отчёте → категория в блоке «Продажи категорий» РНП B2C (столбец «Категория»).
+# Подпись в ИИ отчёте → категория(и) в блоке «Продажи категорий» РНП B2C (столбец «Категория»).
 _AI_CATEGORY_METRIC_ROWS: list[tuple[str, str | tuple[str, ...]]] = [
     ("ОЭС 2 мл, шт.", "ОЭС 2 мл"),
     ("ОЭС 4 мл, шт.", "ОЭС 4 мл"),
@@ -29,8 +33,11 @@ _AI_CATEGORY_METRIC_ROWS: list[tuple[str, str | tuple[str, ...]]] = [
     ("Закрытые pod-системы, шт.", "Закрытая под-система"),
     ("Картриджи с жидкостью, шт.", "Картриджи с жидкостью"),
     ("Никотиновые паучи, шт.", "Никотиновые паучи"),
-    ("Кальянные смеси", "БКС"),
-    ("Прочие товары, шт.", "Прочие товары"),
+    ("Кальянные смеси", ("Кальянные смеси", "БКС")),
+    (
+        "Прочие товары, шт.",
+        ("Прочие товары", "Oxva stick", "oxva stick картриджи"),
+    ),
 ]
 
 _AI_AVG_CHECK_METRICS = frozenset(
@@ -45,6 +52,26 @@ _AI_AVG_CHECK_METRICS = frozenset(
 def ai_category_metric_rows() -> list[tuple[str, str | tuple[str, ...]]]:
     """Строки количества в ИИ отчёте: (подпись, ключ категории РНП B2C)."""
     return list(_AI_CATEGORY_METRIC_ROWS)
+
+
+def _sum_rnp_category_qty(
+    totals: pd.Series | None,
+    category: str | tuple[str, ...],
+) -> str:
+    """Сумма количества по категориям РНП; сопоставление без учёта регистра."""
+    if totals is None:
+        return ""
+    names = (category,) if isinstance(category, str) else category
+    index_by_fold = {str(idx).casefold(): idx for idx in totals.index}
+    qty = 0.0
+    for name in names:
+        if name in totals.index:
+            qty += float(totals[name])
+            continue
+        alias = index_by_fold.get(str(name).casefold())
+        if alias is not None:
+            qty += float(totals[alias])
+    return _fmt_int(qty)
 
 
 def render_ai_report_b2c(
@@ -153,7 +180,7 @@ def build_ai_report_table(
     client_row("Списано бонусов", "spent")
 
     for label, source in ai_category_metric_rows():
-        rows.append([label, category_qty_from_totals(totals_week, source)])
+        rows.append([label, _sum_rnp_category_qty(totals_week, source)])
 
     table = pd.DataFrame(rows, columns=[COL_METRIC, week_col])
     return _apply_sheets_number_format(

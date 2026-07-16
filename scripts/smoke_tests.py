@@ -336,16 +336,22 @@ def test_ai_report_category_rows() -> None:
 
     sales = pd.DataFrame(
         {
-            "Категория": ["ОЭС 2 мл", "БКС", "Прочие товары"],
-            "Количество": [10, 3, 5],
-            "Неделя": [10, 10, 10],
+            "Категория": [
+                "ОЭС 2 мл",
+                "Кальянные смеси",
+                "Прочие товары",
+                "Oxva stick",
+                "OXVA STICK картриджи",
+            ],
+            "Количество": [10, 3, 5, 2, 1],
+            "Неделя": [10, 10, 10, 10, 10],
         }
     )
     table = build_ai_report_table(sales, None, report_week=10)
     values = dict(zip(table["Метрика"], table.iloc[:, 1]))
     _assert(values["ОЭС 2 мл, шт."] == "10", "ai oes qty")
-    _assert(values["Кальянные смеси"] == "3", "ai bks qty")
-    _assert(values["Прочие товары, шт."] == "5", "ai other qty")
+    _assert(values["Кальянные смеси"] == "3", "ai hookah mixes qty")
+    _assert(values["Прочие товары, шт."] == "8", "ai other with oxva")
 
 
 def test_checks_no_bk_pcts() -> None:
