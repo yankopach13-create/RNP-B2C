@@ -393,6 +393,37 @@ def test_shop_economy_grouped_table() -> None:
     _assert(values[3] == "5", "south total")
 
 
+def test_shop_economy_internet_and_boosters() -> None:
+    from config.constants import GROUP_INTERNET_SHOP, GROUP_SIGNET_BOOSTERS
+
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["яИнтернет", "Бонус Голубка"],
+            "Продажи с НДС": [7.0, 3.0],
+            "Группа": [GROUP_INTERNET_SHOP, GROUP_SIGNET_BOOSTERS],
+        }
+    )
+    groups = pd.DataFrame(
+        {
+            "Магазин": ["яИнтернет", "Бонус Голубка"],
+            "Группа": [GROUP_INTERNET_SHOP, GROUP_SIGNET_BOOSTERS],
+        }
+    )
+    shops_order = ["яИнтернет", "Бонус Голубка"]
+    groups_order = [GROUP_INTERNET_SHOP, GROUP_SIGNET_BOOSTERS]
+
+    table, row_kinds = _build_shop_economy_table(
+        sales,
+        shops_order,
+        groups_order,
+        groups,
+    )
+    labels = table.reset_index()["Магазин"].tolist()
+
+    _assert(labels == [GROUP_INTERNET_SHOP], f"internet only, no boosters {labels}")
+    _assert(row_kinds == ["group"], f"single group row {row_kinds}")
+
+
 def test_checks_no_bk_pcts() -> None:
     ref = pd.DataFrame(
         {
@@ -443,6 +474,7 @@ OFFLINE_TESTS = [
     test_ai_report_category_rows,
     test_excel_export_hookah_and_fill_free_sheets,
     test_shop_economy_grouped_table,
+    test_shop_economy_internet_and_boosters,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,
     test_checks_no_bk_new_sellers,

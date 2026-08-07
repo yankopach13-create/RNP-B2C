@@ -723,34 +723,14 @@ def _shops_by_group_from_order(
     return by_group
 
 
-def _shop_economy_financial_agg(
-    df: pd.DataFrame,
-    shops_by_group: dict[str, list[str]],
-) -> pd.DataFrame:
-    """Агрегат по группам для фильтра Signet Boosters."""
-    if "Группа" in df.columns:
-        agg = df.groupby("Группа")[["Продажи с НДС"]].sum()
-        if "Маржа" in df.columns:
-            agg["Маржа"] = df.groupby("Группа")["Маржа"].sum()
-        else:
-            agg["Маржа"] = 0.0
-        return agg
+def _filter_groups_for_shop_economy(group_cols: list[str]) -> list[str]:
+    """Signet Boosters не выводятся; остальные группы — в порядке справочника."""
+    return _filter_groups_for_category_subdivisions(group_cols)
 
-    if df.empty or "Магазин" not in df.columns:
-        return pd.DataFrame(columns=["Продажи с НДС", "Маржа"])
 
-    shop_sales = df.groupby("Магазин")["Продажи с НДС"].sum()
-    shop_sales.index = shop_sales.index.astype(str).str.strip()
-    totals: dict[str, list[float]] = {}
-    for group, shops in shops_by_group.items():
-        totals[group] = [
-            float(shop_sales.get(shop, 0.0) or 0.0) for shop in shops
-        ]
-    rows = {
-        "Продажи с НДС": [sum(values) for values in totals.values()],
-        "Маржа": [0.0] * len(totals),
-    }
-    return pd.DataFrame(rows, index=list(totals.keys()))
+def _should_list_shops_in_shop_economy(group: str) -> bool:
+    """Интернет-магазин — одна строка группы без детализации по магазину."""
+    return not _is_internet_shop_group(group)
 
 
 def _build_shop_economy_table(
@@ -772,10 +752,8 @@ def _build_shop_economy_table(
         shop_sales.index = shop_sales.index.astype(str).str.strip()
         shop_sales = shop_sales[shop_sales.index != ""]
 
-    financial_agg = _shop_economy_financial_agg(df, shops_by_group)
-    group_cols = _filter_groups_for_financial_subdivisions(
+    group_cols = _filter_groups_for_shop_economy(
         resolve_groups_order(groups_order_rnp),
-        financial_agg,
     )
 
     rows = []
@@ -788,6 +766,8 @@ def _build_shop_economy_table(
             "Продажи с НДС": _fmt_number(total),
         })
         row_kinds.append("group")
+        if not _should_list_shops_in_shop_economy(group):
+            continue
         for shop in shops:
             rows.append({
                 "Магазин": shop,
