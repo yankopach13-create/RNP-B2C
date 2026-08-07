@@ -29,11 +29,11 @@ from features.hookah_products import render_hookah_products_block
 from features.metrics import (
     render_financial_metrics_table,
     render_global_metrics,
+    render_shop_economy_dataframe,
     _build_shop_economy_table,
     _can_build_financial_metrics,
     _fmt_fin_int,
     _full_table_height,
-    FINANCIAL_TABLE_ROW_HEIGHT_PX,
 )
 from features.excise_liquid import WeekCalculationConfig, excise_margin_deduction
 from features.excel_export import rnp_b2c_excel_filename
@@ -55,9 +55,6 @@ from ui.reference_quick_add import render_quick_reference_update
 from ui.upload_panel import UploadedFiles, render_upload_panel
 
 st.set_page_config(page_title="B2C РНП", page_icon="📊", layout="wide")
-
-SHOP_ECONOMY_SALES_COL_WIDTH_PX = 70
-SHOP_ECONOMY_SHOP_COL_WIDTH_PX = 165
 
 
 def main():
@@ -691,7 +688,7 @@ def _render_shop_economy_and_lfl(
     with col_left:
         st.markdown("**Экономика магазинов**")
         if has_shop:
-            shop_table = _build_shop_economy_table_simple(
+            shop_table, shop_row_kinds = _build_shop_economy_table_simple(
                 sales_df,
                 data.shops_order,
                 data.groups_order_rnp,
@@ -701,22 +698,10 @@ def _render_shop_economy_and_lfl(
                 shop_table_height = paired_table_height or _full_table_height(
                     len(shop_table)
                 )
-                st.dataframe(
-                    shop_table.reset_index(),
-                    use_container_width=True,
-                    hide_index=True,
+                render_shop_economy_dataframe(
+                    shop_table,
+                    shop_row_kinds,
                     height=shop_table_height,
-                    row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
-                    column_config={
-                        "Магазин": st.column_config.TextColumn(
-                            "Магазин",
-                            width=SHOP_ECONOMY_SHOP_COL_WIDTH_PX,
-                        ),
-                        "Продажи с НДС": st.column_config.TextColumn(
-                            "Продажи с НДС",
-                            width=SHOP_ECONOMY_SALES_COL_WIDTH_PX,
-                        ),
-                    },
                 )
             else:
                 st.info("Нет данных по магазинам.")

@@ -245,7 +245,7 @@ def collect_rnp_b2c_sheets(
         )
 
     if df_report is not None:
-        shop_table = _build_shop_economy_table(
+        shop_table, _shop_row_kinds = _build_shop_economy_table(
             df_report,
             data.shops_order,
             data.groups_order_rnp,

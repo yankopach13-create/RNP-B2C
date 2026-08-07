@@ -189,6 +189,8 @@ FINANCIAL_TABLE_HEADER_HEIGHT_PX = 38
 FINANCIAL_TABLE_COL_GROUP_PX = 200
 FINANCIAL_TABLE_COL_METRIC_PX = 220
 FINANCIAL_TABLE_COL_VALUE_PX = 130
+SHOP_ECONOMY_SHOP_COL_WIDTH_PX = 165
+SHOP_ECONOMY_SALES_COL_WIDTH_PX = 70
 
 # Пустые строки между подразделениями в таблицах
 FINANCIAL_SUBDIVISION_SPACER_ROWS = 1
@@ -756,10 +758,10 @@ def _build_shop_economy_table(
     shops_order: list[str] | None = None,
     groups_order_rnp: list[str] | None = None,
     groups_df: pd.DataFrame | None = None,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, list[str]]:
     display_order = resolve_shops_order(shops_order)
     if not display_order:
-        return pd.DataFrame(columns=["Продажи с НДС"])
+        return pd.DataFrame(columns=["Продажи с НДС"]), []
 
     shop_group_map = _build_shop_group_map(groups_df)
     shops_by_group = _shops_by_group_from_order(display_order, shop_group_map)
@@ -777,6 +779,7 @@ def _build_shop_economy_table(
     )
 
     rows = []
+    row_kinds: list[str] = []
     for group in group_cols:
         shops = shops_by_group.get(group, [])
         total = sum(float(shop_sales.get(shop, 0.0) or 0.0) for shop in shops)
@@ -784,16 +787,60 @@ def _build_shop_economy_table(
             "Магазин": group,
             "Продажи с НДС": _fmt_number(total),
         })
+        row_kinds.append("group")
         for shop in shops:
             rows.append({
                 "Магазин": shop,
                 "Продажи с НДС": _fmt_number(shop_sales.get(shop)),
             })
+            row_kinds.append("shop")
 
     if not rows:
-        return pd.DataFrame(columns=["Продажи с НДС"])
+        return pd.DataFrame(columns=["Продажи с НДС"]), []
 
-    return pd.DataFrame(rows).set_index("Магазин")
+    return pd.DataFrame(rows).set_index("Магазин"), row_kinds
+
+
+def _shop_economy_column_config() -> dict:
+    return {
+        "Магазин": st.column_config.TextColumn(
+            "Магазин",
+            width=SHOP_ECONOMY_SHOP_COL_WIDTH_PX,
+        ),
+        "Продажи с НДС": st.column_config.TextColumn(
+            "Продажи с НДС",
+            width=SHOP_ECONOMY_SALES_COL_WIDTH_PX,
+        ),
+    }
+
+
+def _style_shop_economy_table(table: pd.DataFrame, row_kinds: list[str]):
+    """Строки групп — по центру, магазины — слева; выручка — вправо."""
+
+    def row_style(row: pd.Series) -> list[str]:
+        kind = row_kinds[row.name] if row.name < len(row_kinds) else "shop"
+        shop_css = "text-align: center" if kind == "group" else ""
+        value_css = "text-align: right"
+        return [shop_css, value_css]
+
+    return table.style.apply(row_style, axis=1)
+
+
+def render_shop_economy_dataframe(
+    table: pd.DataFrame,
+    row_kinds: list[str],
+    *,
+    height: int | None = None,
+) -> None:
+    display = table.reset_index()
+    st.dataframe(
+        _style_shop_economy_table(display, row_kinds),
+        use_container_width=True,
+        hide_index=True,
+        column_config=_shop_economy_column_config(),
+        height=height,
+        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    )
 
 def _build_turnover_display(
     turnover_df: pd.DataFrame,

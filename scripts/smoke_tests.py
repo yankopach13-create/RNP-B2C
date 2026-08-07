@@ -373,19 +373,21 @@ def test_shop_economy_grouped_table() -> None:
     shops_order = ["Магазин B", "Магазин A", "Магазин C"]
     groups_order = ["Восток", "Юг"]
 
-    table = _build_shop_economy_table(
+    table, row_kinds = _build_shop_economy_table(
         sales,
         shops_order,
         groups_order,
         groups,
-    ).reset_index()
-    labels = table["Магазин"].tolist()
-    values = table["Продажи с НДС"].tolist()
+    )
+    display = table.reset_index()
+    labels = display["Магазин"].tolist()
+    values = display["Продажи с НДС"].tolist()
 
     _assert(
         labels == ["Восток", "Магазин B", "Магазин A", "Юг", "Магазин C"],
         f"grouped order {labels}",
     )
+    _assert(row_kinds == ["group", "shop", "shop", "group", "shop"], f"row kinds {row_kinds}")
     _assert(values[0] == "5", "east total")
     _assert(values[1] == "2", "shop b")
     _assert(values[3] == "5", "south total")
