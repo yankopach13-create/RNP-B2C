@@ -256,6 +256,7 @@ def collect_rnp_b2c_sheets(
                 ExcelSheetSpec(
                     name="План-факт магазины",
                     table=_prepare_table_for_excel(shop_table),
+                    row_kinds=shop_row_kinds,
                 )
             )
 
@@ -426,6 +427,8 @@ def _style_worksheet(
                 cell.alignment = LEFT
 
             if sheet_name == "Фокус" and col_idx == 1 and str(value).strip():
+                cell.font = GROUP_FONT
+            elif sheet_name == "План-факт магазины" and kind == "group":
                 cell.font = GROUP_FONT
             elif sheet_name in ("Финансы", "Продажи категорий") and col_idx == 1:
                 group_val = str(df.iloc[row_idx, 0]).strip()
