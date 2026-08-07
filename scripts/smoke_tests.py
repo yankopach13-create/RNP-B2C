@@ -41,6 +41,7 @@ from features.reference_update import (  # noqa: E402
     _mutate_shop_groups,
     category_triple_keys_set,
 )
+from features.metrics import _build_shop_economy_table  # noqa: E402
 
 
 def _assert(cond: bool, msg: str) -> None:
@@ -354,6 +355,42 @@ def test_ai_report_category_rows() -> None:
     _assert(values["Прочие товары, шт."] == "8", "ai other with oxva")
 
 
+def test_shop_economy_grouped_table() -> None:
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Магазин A", "Магазин B", "Магазин C"],
+            "Продажи с НДС": [3.0, 2.0, 5.0],
+            "Маржа": [1.0, 1.0, 2.0],
+            "Группа": ["Восток", "Восток", "Юг"],
+        }
+    )
+    groups = pd.DataFrame(
+        {
+            "Магазин": ["Магазин A", "Магазин B", "Магазин C"],
+            "Группа": ["Восток", "Восток", "Юг"],
+        }
+    )
+    shops_order = ["Магазин B", "Магазин A", "Магазин C"]
+    groups_order = ["Восток", "Юг"]
+
+    table = _build_shop_economy_table(
+        sales,
+        shops_order,
+        groups_order,
+        groups,
+    ).reset_index()
+    labels = table["Магазин"].tolist()
+    values = table["Продажи с НДС"].tolist()
+
+    _assert(
+        labels == ["Восток", "Магазин B", "Магазин A", "Юг", "Магазин C"],
+        f"grouped order {labels}",
+    )
+    _assert(values[0] == "5", "east total")
+    _assert(values[1] == "2", "shop b")
+    _assert(values[3] == "5", "south total")
+
+
 def test_checks_no_bk_pcts() -> None:
     ref = pd.DataFrame(
         {
@@ -403,6 +440,7 @@ OFFLINE_TESTS = [
     test_fill_free_products_table,
     test_ai_report_category_rows,
     test_excel_export_hookah_and_fill_free_sheets,
+    test_shop_economy_grouped_table,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,
     test_checks_no_bk_new_sellers,

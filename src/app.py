@@ -622,9 +622,16 @@ def _filter_report_sales(
 def _build_shop_economy_table_simple(
     df_sales: pd.DataFrame,
     shops_order: list[str] | None = None,
+    groups_order_rnp: list[str] | None = None,
+    groups_df: pd.DataFrame | None = None,
 ):
     """Упрощенная версия экономики магазинов."""
-    return _build_shop_economy_table(df_sales, shops_order)
+    return _build_shop_economy_table(
+        df_sales,
+        shops_order,
+        groups_order_rnp,
+        groups_df,
+    )
 
 
 def _render_shop_economy_and_lfl(
@@ -685,7 +692,10 @@ def _render_shop_economy_and_lfl(
         st.markdown("**Экономика магазинов**")
         if has_shop:
             shop_table = _build_shop_economy_table_simple(
-                sales_df, data.shops_order
+                sales_df,
+                data.shops_order,
+                data.groups_order_rnp,
+                data.groups,
             )
             if not shop_table.empty:
                 shop_table_height = paired_table_height or _full_table_height(

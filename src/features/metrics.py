@@ -685,33 +685,115 @@ def _build_turnover_summary(
 
     return result.fillna("")
 
-def _build_shop_economy_table(
+
+def _normalize_shop_key(value: object) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _build_shop_group_map(groups_df: pd.DataFrame | None) -> dict[str, str]:
+    """Ключ магазина (casefold) → название группы из справочника."""
+    if groups_df is None or groups_df.empty:
+        return {}
+    df = groups_df.copy()
+    df.columns = df.columns.astype(str).str.strip()
+    if "Магазин" not in df.columns or "Группа" not in df.columns:
+        return {}
+    mapping: dict[str, str] = {}
+    for _, row in df.iterrows():
+        shop = str(row["Магазин"]).strip()
+        group = str(row["Группа"]).strip()
+        if shop and group and shop.lower() not in ("nan", "none"):
+            mapping[_normalize_shop_key(shop)] = group
+    return mapping
+
+
+def _shops_by_group_from_order(
+    shops_order: list[str],
+    shop_group_map: dict[str, str],
+) -> dict[str, list[str]]:
+    """Магазины из порядка, сгруппированные с сохранением последовательности."""
+    by_group: dict[str, list[str]] = {}
+    for shop in shops_order:
+        group = shop_group_map.get(_normalize_shop_key(shop))
+        if not group:
+            continue
+        by_group.setdefault(group, []).append(shop)
+    return by_group
+
+
+def _shop_economy_financial_agg(
     df: pd.DataFrame,
-    shops_order: list[str] | None = None,
+    shops_by_group: dict[str, list[str]],
 ) -> pd.DataFrame:
+    """Агрегат по группам для фильтра Signet Boosters."""
+    if "Группа" in df.columns:
+        agg = df.groupby("Группа")[["Продажи с НДС"]].sum()
+        if "Маржа" in df.columns:
+            agg["Маржа"] = df.groupby("Группа")["Маржа"].sum()
+        else:
+            agg["Маржа"] = 0.0
+        return agg
+
     if df.empty or "Магазин" not in df.columns:
-        return pd.DataFrame(columns=["Продажи с НДС"])
+        return pd.DataFrame(columns=["Продажи с НДС", "Маржа"])
 
     shop_sales = df.groupby("Магазин")["Продажи с НДС"].sum()
     shop_sales.index = shop_sales.index.astype(str).str.strip()
-    shop_sales = shop_sales[shop_sales.index != ""]
+    totals: dict[str, list[float]] = {}
+    for group, shops in shops_by_group.items():
+        totals[group] = [
+            float(shop_sales.get(shop, 0.0) or 0.0) for shop in shops
+        ]
+    rows = {
+        "Продажи с НДС": [sum(values) for values in totals.values()],
+        "Маржа": [0.0] * len(totals),
+    }
+    return pd.DataFrame(rows, index=list(totals.keys()))
 
-    if shop_sales.empty and not resolve_shops_order(shops_order):
+
+def _build_shop_economy_table(
+    df: pd.DataFrame,
+    shops_order: list[str] | None = None,
+    groups_order_rnp: list[str] | None = None,
+    groups_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    display_order = resolve_shops_order(shops_order)
+    if not display_order:
         return pd.DataFrame(columns=["Продажи с НДС"])
 
-    display_order = resolve_shops_order(shops_order)
-    shops_in_data = set(shop_sales.index)
-    ordered_shops = ordered_shop_labels(shops_in_data | set(display_order), shops_order)
+    shop_group_map = _build_shop_group_map(groups_df)
+    shops_by_group = _shops_by_group_from_order(display_order, shop_group_map)
+
+    shop_sales = pd.Series(dtype=float)
+    if not df.empty and "Магазин" in df.columns:
+        shop_sales = df.groupby("Магазин")["Продажи с НДС"].sum()
+        shop_sales.index = shop_sales.index.astype(str).str.strip()
+        shop_sales = shop_sales[shop_sales.index != ""]
+
+    financial_agg = _shop_economy_financial_agg(df, shops_by_group)
+    group_cols = _filter_groups_for_financial_subdivisions(
+        resolve_groups_order(groups_order_rnp),
+        financial_agg,
+    )
 
     rows = []
-    for shop in ordered_shops:
-        value = shop_sales.get(shop)
+    for group in group_cols:
+        shops = shops_by_group.get(group, [])
+        total = sum(float(shop_sales.get(shop, 0.0) or 0.0) for shop in shops)
         rows.append({
-            "Магазин": shop,
-            "Продажи с НДС": _fmt_number(value),
+            "Магазин": group,
+            "Продажи с НДС": _fmt_number(total),
         })
+        for shop in shops:
+            rows.append({
+                "Магазин": shop,
+                "Продажи с НДС": _fmt_number(shop_sales.get(shop)),
+            })
 
-    return pd.DataFrame(rows).set_index("Магазин")    
+    if not rows:
+        return pd.DataFrame(columns=["Продажи с НДС"])
+
+    return pd.DataFrame(rows).set_index("Магазин")
 
 def _build_turnover_display(
     turnover_df: pd.DataFrame,
