@@ -622,7 +622,7 @@ def _build_shop_economy_table_simple(
     groups_order_rnp: list[str] | None = None,
     groups_df: pd.DataFrame | None = None,
 ):
-    """Упрощенная версия экономики магазинов."""
+    """Упрощенная версия блока «План-факт магазины»."""
     return _build_shop_economy_table(
         df_sales,
         shops_order,
@@ -640,7 +640,7 @@ def _render_shop_economy_and_lfl(
     excise_lfl_qty: float = 0.0,
     excise_report_qty: float = 0.0,
 ) -> None:
-    """Экономика магазинов, факторный анализ, кальянная продукция и Fill free."""
+    """План-факт магазины, факторный анализ, кальянная продукция и Fill free."""
     hookah_kwargs = {
         "sales_df": sales_df if sales_df is not None else data.sales,
         "focus_hookah": data.focus_hookah,
@@ -686,7 +686,7 @@ def _render_shop_economy_and_lfl(
     )
 
     with col_left:
-        st.markdown("**Экономика магазинов**")
+        st.markdown("**План-факт магазины**")
         if has_shop:
             shop_table, shop_row_kinds = _build_shop_economy_table_simple(
                 sales_df,

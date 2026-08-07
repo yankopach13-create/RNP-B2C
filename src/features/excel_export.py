@@ -254,7 +254,7 @@ def collect_rnp_b2c_sheets(
         if shop_table is not None and not shop_table.empty:
             sheets.append(
                 ExcelSheetSpec(
-                    name="Экономика магазинов",
+                    name="План-факт магазины",
                     table=_prepare_table_for_excel(shop_table),
                 )
             )
