@@ -26,7 +26,6 @@ from features.categories import (  # noqa: E402
     unique_category_pairs,
 )
 from features.data_prep import collect_new_shops, collect_unmatched_products  # noqa: E402
-from features.fill_free_products import build_fill_free_table  # noqa: E402
 from features.hookah_products import build_hookah_products_table  # noqa: E402
 from features.ai_report import ai_category_metric_rows, build_ai_report_table  # noqa: E402
 from features.checks_no_bk import (  # noqa: E402
@@ -198,36 +197,11 @@ def test_hookah_products_table() -> None:
     _assert(values["Юг"] == "", "south nesting empty")
 
 
-def test_fill_free_products_table() -> None:
-    fill_free = pd.DataFrame(
-        {
-            "Год-Неделя": ["2026-10", "2026-10", "2026-11", "2026-11"],
-            "Магазин": ["Shop A", "Shop A", "Shop B", "Shop B"],
-            "Неделя": [10, 10, 11, 11],
-            "Клиентов": [1, 1, 1, 1],
-            "Код клиента": ["C1", "C2", "C1", "C3"],
-        }
-    )
-    groups = pd.DataFrame({"Магазин": ["Shop A", "Shop B"], "Группа": ["Восток", "Юг"]})
-    table, warnings = build_fill_free_table(fill_free, groups, 11)
-    _assert(not warnings, "no warnings")
-    _assert(table is not None, "table built")
-    week_col = "Неделя 11"
-    values = {row["Группа"]: row for _, row in table.iterrows()}
-    _assert(values["Весь B2C"]["Накопительно"] == "3", "b2c cumulative")
-    _assert(values["Весь B2C"][week_col] == "2", "b2c week")
-    _assert(values["Восток"]["Накопительно"] == "2", "east cumulative")
-    _assert(values["Восток"][week_col] == "", "east week empty")
-    _assert(values["Юг"]["Накопительно"] == "2", "south cumulative")
-    _assert(values["Юг"][week_col] == "2", "south week")
-
-
-def test_excel_export_hookah_and_fill_free_sheets() -> None:
+def test_excel_export_hookah_sheet() -> None:
     from data.loaders import AppData
     from features.excel_export import collect_rnp_b2c_sheets
     from features.excise_liquid import WeekCalculationConfig
 
-    sales = None
     hookah = pd.DataFrame(
         {
             "Магазин": ["Shop A"],
@@ -235,17 +209,8 @@ def test_excel_export_hookah_and_fill_free_sheets() -> None:
             "количество товара": [6],
         }
     )
-    fill_free = pd.DataFrame(
-        {
-            "Год-Неделя": ["2026-10"],
-            "Магазин": ["Shop A"],
-            "Неделя": [10],
-            "Клиентов": [1],
-            "Код клиента": ["C1"],
-        }
-    )
     data = AppData(
-        sales=sales,
+        sales=None,
         groups=None,
         categories=None,
         checks_clients=None,
@@ -255,7 +220,7 @@ def test_excel_export_hookah_and_fill_free_sheets() -> None:
         turnover_week=None,
         turnover_90=None,
         focus_hookah=hookah,
-        focus_fill_free=fill_free,
+        focus_fill_free=None,
         groups_order_rnp=None,
         category_order_rnp=None,
         category_order_general=None,
@@ -271,7 +236,7 @@ def test_excel_export_hookah_and_fill_free_sheets() -> None:
     sheets = collect_rnp_b2c_sheets(data, None, week_config)
     names = [spec.name for spec in sheets]
     _assert("Кальянная продукция" in names, "hookah sheet")
-    _assert("Fill free" in names, "fill free sheet")
+    _assert("Fill free" not in names, "no fill free sheet")
 
 
 def test_mutate_categories_add_product() -> None:
@@ -470,9 +435,8 @@ OFFLINE_TESTS = [
     test_normalize_app_data_legacy,
     test_hookah_sales_exact_match,
     test_hookah_products_table,
-    test_fill_free_products_table,
     test_ai_report_category_rows,
-    test_excel_export_hookah_and_fill_free_sheets,
+    test_excel_export_hookah_sheet,
     test_shop_economy_grouped_table,
     test_shop_economy_internet_and_boosters,
     test_mutate_shop_groups,

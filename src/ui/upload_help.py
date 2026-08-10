@@ -17,8 +17,6 @@ _IMAGE_STEM_ALIASES: dict[str, str] = {
     "turnover": "turnover",
     "hookah": "hookah",
     "focus_hookah": "hookah",
-    "fill_free": "fill_free",
-    "focus_fill_free": "fill_free",
     "pct_no_bk": "pct_no_bk",
     "checks_no_bk": "pct_no_bk",
 }

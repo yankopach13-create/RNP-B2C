@@ -371,18 +371,6 @@ def load_all_data(files) -> AppData:
             ["количество чеков", "количество товара", "Количество чеков", "Количество товара"],
         )
 
-    focus_fill_free_df = (
-        _read_excel(files.focus_fill_free, label="Fill free")
-        if getattr(files, "focus_fill_free", None)
-        else None
-    )
-    if focus_fill_free_df is not None:
-        focus_fill_free_df.columns = focus_fill_free_df.columns.str.strip()
-        _coerce_numeric_columns(
-            focus_fill_free_df,
-            ["Неделя", "неделя", "Клиентов", "клиентов"],
-        )
-
     return AppData(
         sales=sales_df,
         groups=groups_df,
@@ -394,7 +382,7 @@ def load_all_data(files) -> AppData:
         turnover_week=turnover_week_df,
         turnover_90=turnover_90_df,
         focus_hookah=focus_hookah_df,
-        focus_fill_free=focus_fill_free_df,
+        focus_fill_free=None,
         groups_order_rnp=groups_order_rnp,
         category_order_rnp=category_order_rnp,
         category_order_general=category_order_general,

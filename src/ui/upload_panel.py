@@ -14,7 +14,6 @@ class UploadedFiles:
     turnover_week: object = None
     turnover_90: object = None
     focus_hookah: object = None
-    focus_fill_free: object = None
     run_analysis: bool = False
 
 
@@ -121,29 +120,12 @@ def render_upload_panel() -> UploadedFiles:
                     'Вставьте скачанный документ в контейнер «Кальянная продукция».'
                 ),
                 caption_title="Кальянная продукция",
-                second_image_name="fill_free.png",
-                second_caption_title="Fill free",
-                second_caption=(
-                    "Зайдите в Qlik под профилем User2.<br>"
-                    'В анализе чеков перейдите в закладку '
-                    '"АВТОМАТИЗАЦИЯ РНП B2С ( Fill free)".<br><br>'
-                    "В фильтрах отберите недели актуального цикла и скачайте отчёт "
-                    "без форматирования (не нажимайте галочку при скачивании).<br><br>"
-                    'Вставьте скачанный документ в контейнер «Fill free».'
-                ),
                 align="right",
-                two_column_layout=True,
-                compact_images=True,
             )
             focus_hookah_file = st.file_uploader(
                 "Кальянная продукция",
                 type=_XLSX_TYPES,
                 key="focus_hookah_uploader",
-            )
-            focus_fill_free_file = st.file_uploader(
-                "Fill free",
-                type=_XLSX_TYPES,
-                key="focus_fill_free_uploader",
             )
 
         _inject_upload_page_styles()
@@ -163,7 +145,6 @@ def render_upload_panel() -> UploadedFiles:
             "turnover_week": turnover_week_file,
             "turnover_90": turnover_90_file,
             "focus_hookah": focus_hookah_file,
-            "focus_fill_free": focus_fill_free_file,
         }
         st.session_state["run_analysis"] = True
         container.empty()
@@ -174,7 +155,6 @@ def render_upload_panel() -> UploadedFiles:
             turnover_week=turnover_week_file,
             turnover_90=turnover_90_file,
             focus_hookah=focus_hookah_file,
-            focus_fill_free=focus_fill_free_file,
             run_analysis=True,
         )
 
@@ -187,7 +167,6 @@ def render_upload_panel() -> UploadedFiles:
             turnover_week=u.get("turnover_week"),
             turnover_90=u.get("turnover_90"),
             focus_hookah=u.get("focus_hookah"),
-            focus_fill_free=u.get("focus_fill_free"),
             run_analysis=True,
         )
 

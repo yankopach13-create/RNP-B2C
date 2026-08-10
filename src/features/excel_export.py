@@ -25,7 +25,6 @@ from features.clients import (
 from features.data_prep import filter_sales_by_report_week
 from features.excise_liquid import WeekCalculationConfig
 from features.focus import build_focus_display_df
-from features.fill_free_products import build_fill_free_table
 from features.hookah_products import build_hookah_products_table
 from features.lfl import build_lfl_factor_table
 from features.metrics import (
@@ -245,7 +244,7 @@ def collect_rnp_b2c_sheets(
         )
 
     if df_report is not None:
-        shop_table, _shop_row_kinds = _build_shop_economy_table(
+        shop_table, shop_row_kinds = _build_shop_economy_table(
             df_report,
             data.shops_order,
             data.groups_order_rnp,
@@ -289,20 +288,6 @@ def collect_rnp_b2c_sheets(
                 ExcelSheetSpec(
                     name="Кальянная продукция",
                     table=_prepare_table_for_excel(hookah_table),
-                )
-            )
-
-    if data.focus_fill_free is not None:
-        fill_free_table, _ = build_fill_free_table(
-            data.focus_fill_free,
-            data.groups,
-            report_week,
-        )
-        if fill_free_table is not None and not fill_free_table.empty:
-            sheets.append(
-                ExcelSheetSpec(
-                    name="Fill free",
-                    table=_prepare_table_for_excel(fill_free_table),
                 )
             )
 
@@ -445,7 +430,6 @@ def _style_worksheet(
             elif sheet_name in (
                 "Клиентский блок",
                 "Кальянная продукция",
-                "Fill free",
             ) and col_idx == 1 and str(value).strip():
                 cell.font = BOLD_FONT
             else:
