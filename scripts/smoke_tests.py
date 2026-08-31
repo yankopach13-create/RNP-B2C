@@ -41,6 +41,7 @@ from features.reference_update import (  # noqa: E402
     category_triple_keys_set,
 )
 from features.metrics import _build_shop_economy_table  # noqa: E402
+from features.turnover import prepare_turnover_table  # noqa: E402
 
 
 def _assert(cond: bool, msg: str) -> None:
@@ -425,6 +426,73 @@ def test_checks_no_bk_pcts() -> None:
     )
 
 
+def test_turnover_by_level4() -> None:
+    inventory = pd.DataFrame(
+        {
+            "Товар ур.4": ["SKU-A", "SKU-B", "SKU-C", "-", "SKIP"],
+            "Остаток сред.дн. (Q)": [90, 10, 50, 999, 40],
+            "Продажи (Q)": [90, 10, 50, 999, 40],
+            "Запасы (дней) (Q)": [10, 10, 10, "5", "-"],
+        }
+    )
+    cats = pd.DataFrame(
+        {
+            "Категория товара РНП:": ["CatA/G", "CatA/G", "CatB/G"],
+            "Товар ур.2": ["U2", "U2", "U2"],
+            "Товар ур.3": ["U3", "U3", "U3b"],
+            "Товар ур.4": ["SKU-A", "SKU-B", "SKU-C"],
+        }
+    )
+    table = prepare_turnover_table(inventory, cats, period_days=90)
+    by_cat = dict(zip(table["Категория"], table["Оборачиваемость, дни"]))
+    _assert(by_cat.get("CatA") == "90", f"CatA days {by_cat}")
+    _assert(by_cat.get("CatB") == "90", f"CatB days {by_cat}")
+    _assert("Прочие товары" not in by_cat, "dash/empty rows excluded")
+
+
+def test_turnover_level4_fallback_u3() -> None:
+    inventory = pd.DataFrame(
+        {
+            "Товар ур.4": ["UnknownSKU"],
+            "Товар ур.3": ["LineX"],
+            "Остаток сред.дн. (Q)": [14],
+            "Продажи (Q)": [14],
+        }
+    )
+    cats = pd.DataFrame(
+        {
+            "Категория товара РНП:": ["CatLine/G"],
+            "Товар ур.2": ["U2"],
+            "Товар ур.3": ["LineX"],
+            "Товар ур.4": [""],
+        }
+    )
+    table = prepare_turnover_table(inventory, cats, period_days=7)
+    _assert(len(table) == 1, "one category")
+    _assert(table.iloc[0]["Категория"] == "CatLine", "fallback to u3")
+    _assert(table.iloc[0]["Оборачиваемость, дни"] == "7", "7-day turnover")
+
+
+def test_turnover_legacy_level3() -> None:
+    inventory = pd.DataFrame(
+        {
+            "Товар3": ["LineX"],
+            "Остаток сред.дн. (Q)": [20],
+            "Продажи (Q)": [10],
+        }
+    )
+    cats = pd.DataFrame(
+        {
+            "Категория товара РНП:": ["OldCat/G"],
+            "Товар ур.2": ["U2"],
+            "Товар ур.3": ["LineX"],
+        }
+    )
+    table = prepare_turnover_table(inventory, cats, period_days=10)
+    _assert(table.iloc[0]["Категория"] == "OldCat", "legacy u3 column")
+    _assert(table.iloc[0]["Оборачиваемость, дни"] == "20", "stock/daily")
+
+
 OFFLINE_TESTS = [
     test_column_letter,
     test_sheet_range_name,
@@ -443,6 +511,9 @@ OFFLINE_TESTS = [
     test_mutate_categories_add_product,
     test_checks_no_bk_new_sellers,
     test_checks_no_bk_pcts,
+    test_turnover_by_level4,
+    test_turnover_level4_fallback_u3,
+    test_turnover_legacy_level3,
 ]
 
 

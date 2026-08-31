@@ -3,8 +3,10 @@ import pandas as pd
 from config.constants import CATEGORY_COLUMN_GENERAL, CATEGORY_COLUMN_RNP
 from features.categories import parse_category_pair
 
-TURNOVER_PRODUCT_COL = "Товар ур.3"
-TURNOVER_PRODUCT_COL_ALT = "Товар3"
+TURNOVER_PRODUCT_COL_L4 = "Товар ур.4"
+TURNOVER_PRODUCT_COL_L4_ALT = "Товар4"
+TURNOVER_PRODUCT_COL_L3 = "Товар ур.3"
+TURNOVER_PRODUCT_COL_L3_ALT = "Товар3"
 TURNOVER_STOCK_DAYS_COL = "Запасы (дней) (Q)"
 TURNOVER_UNKNOWN_CATEGORY = "Прочие товары"
 
@@ -18,41 +20,75 @@ def _norm_turnover_cell(value) -> str:
     return s
 
 
-def _build_turnover_map_by_u3(category_ref: pd.DataFrame) -> dict[str, str]:
-    """Справочник categories: Товар ур.3 → категория РНП (ключ без учёта регистра)."""
+def _ensure_canonical_column(df: pd.DataFrame, canonical: str, alt: str) -> bool:
+    """Приводит альтернативное имя столбца к каноническому. True, если столбец есть."""
+    if canonical in df.columns:
+        return True
+    if alt in df.columns:
+        df[canonical] = df[alt].map(_norm_turnover_cell)
+        return True
+    return False
+
+
+def _build_turnover_product_maps(
+    category_ref: pd.DataFrame,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """
+    Справочник categories: Товар ур.4 / ур.3 → категория РНП.
+
+    Ключи без учёта регистра. Строки без категории пропускаются.
+    """
     ref = category_ref.copy()
     ref.columns = ref.columns.str.strip()
-    mapping: dict[str, str] = {}
+    map_u4: dict[str, str] = {}
+    map_u3: dict[str, str] = {}
 
-    if "Товар ур.3" not in ref.columns:
-        return mapping
+    has_u4 = "Товар ур.4" in ref.columns
+    has_u3 = "Товар ур.3" in ref.columns
+    if not has_u4 and not has_u3:
+        return map_u4, map_u3
 
     has_general = CATEGORY_COLUMN_GENERAL in ref.columns
     for _, row in ref.iterrows():
-        u3 = _norm_turnover_cell(row.get("Товар ур.3"))
         override = (
             _norm_turnover_cell(row.get(CATEGORY_COLUMN_GENERAL)) if has_general else ""
         )
         rnp, _ = parse_category_pair(
             row.get(CATEGORY_COLUMN_RNP, ""), general_override=override
         )
-        if not u3 or not rnp:
+        if not rnp:
             continue
-        mapping[u3.casefold()] = rnp
+        if has_u4:
+            u4 = _norm_turnover_cell(row.get("Товар ур.4"))
+            if u4 and u4 != "-":
+                map_u4[u4.casefold()] = rnp
+        if has_u3:
+            u3 = _norm_turnover_cell(row.get("Товар ур.3"))
+            if u3 and u3 != "-":
+                map_u3[u3.casefold()] = rnp
 
-    return mapping
+    return map_u4, map_u3
 
 
-def _resolve_turnover_product_column(df: pd.DataFrame) -> str:
-    """Возвращает имя столбца товара ур.3 в файле оборачиваемости."""
-    if TURNOVER_PRODUCT_COL in df.columns:
-        return TURNOVER_PRODUCT_COL
-    if TURNOVER_PRODUCT_COL_ALT in df.columns:
-        df[TURNOVER_PRODUCT_COL] = df[TURNOVER_PRODUCT_COL_ALT].map(_norm_turnover_cell)
-        return TURNOVER_PRODUCT_COL
+def _resolve_turnover_product_columns(df: pd.DataFrame) -> tuple[str, str | None]:
+    """
+    Возвращает (основной столбец товара, запасной).
+
+    Приоритет — ур.4 (или «Товар4»); если его нет — ур.3 / «Товар3».
+    """
+    has_l4 = _ensure_canonical_column(
+        df, TURNOVER_PRODUCT_COL_L4, TURNOVER_PRODUCT_COL_L4_ALT
+    )
+    has_l3 = _ensure_canonical_column(
+        df, TURNOVER_PRODUCT_COL_L3, TURNOVER_PRODUCT_COL_L3_ALT
+    )
+    if has_l4:
+        return TURNOVER_PRODUCT_COL_L4, TURNOVER_PRODUCT_COL_L3 if has_l3 else None
+    if has_l3:
+        return TURNOVER_PRODUCT_COL_L3, None
     raise ValueError(
-        f"В файле оборачиваемости нет столбца «{TURNOVER_PRODUCT_COL}» "
-        f"или «{TURNOVER_PRODUCT_COL_ALT}»."
+        "В файле оборачиваемости нет столбца «Товар ур.4» / «Товар4» "
+        "или «Товар ур.3» / «Товар3»."
     )
 
 
@@ -64,16 +100,28 @@ def _is_turnover_excluded_by_stock_days(value) -> bool:
 
 
 def _is_turnover_excluded_product(value) -> bool:
-    """Строки с «-» или пустым товаром ур.3 не участвуют в расчёте."""
+    """Строки с «-» или пустым товаром не участвуют в расчёте."""
     s = _norm_turnover_cell(value)
     return s == "-" or s == ""
 
 
-def _turnover_lookup_category(u3: str, map_u3: dict[str, str]) -> str:
-    key = _norm_turnover_cell(u3).casefold()
-    if not key:
-        return TURNOVER_UNKNOWN_CATEGORY
-    return map_u3.get(key, TURNOVER_UNKNOWN_CATEGORY)
+def _assign_turnover_categories(
+    df: pd.DataFrame,
+    product_col: str,
+    fallback_col: str | None,
+    map_u4: dict[str, str],
+    map_u3: dict[str, str],
+) -> None:
+    """Пишет столбец «Категория»: сначала ур.4, при промахе — ур.3."""
+    primary_map = map_u4 if product_col == TURNOVER_PRODUCT_COL_L4 else map_u3
+    keys_primary = df[product_col].map(_norm_turnover_cell).str.casefold()
+    df["Категория"] = keys_primary.map(primary_map)
+
+    if product_col == TURNOVER_PRODUCT_COL_L4 and fallback_col is not None:
+        keys_u3 = df[fallback_col].map(_norm_turnover_cell).str.casefold()
+        df["Категория"] = df["Категория"].fillna(keys_u3.map(map_u3))
+
+    df["Категория"] = df["Категория"].fillna(TURNOVER_UNKNOWN_CATEGORY)
 
 
 def prepare_turnover_table(
@@ -86,10 +134,12 @@ def prepare_turnover_table(
 
     Оборачиваемость = Средний остаток / (Продажи / период_в_днях)
 
-    Файл оборачиваемости — в разрезе **Товар ур.3** (или «Товар3»);
-    категория берётся из справочника categories по столбцу «Товар ур.3».
-    Строки, где «Запасы (дней) (Q)» = «-» или «Товар ур.3» / «Товар3» = «-»
-    (или пусто), не участвуют в расчёте.
+    Файл оборачиваемости — в разрезе **Товар ур.4** (или «Товар4»);
+    категория берётся из справочника categories по «Товар ур.4».
+    Если ур.4 в справочнике нет, а в файле есть «Товар ур.3» — запасной
+    поиск по ур.3. Старые файлы только с ур.3 / «Товар3» поддерживаются.
+    Строки, где «Запасы (дней) (Q)» = «-» или товар пустой / «-»,
+    не участвуют в расчёте.
     """
     if df_inventory is None or df_inventory.empty:
         return pd.DataFrame(columns=["Категория", "Оборачиваемость, дни"])
@@ -99,10 +149,13 @@ def prepare_turnover_table(
 
     category_ref = categories_df.copy()
     category_ref.columns = category_ref.columns.str.strip()
-    map_u3 = _build_turnover_map_by_u3(category_ref)
+    map_u4, map_u3 = _build_turnover_product_maps(category_ref)
 
-    product_col = _resolve_turnover_product_column(df)
+    product_col, fallback_col = _resolve_turnover_product_columns(df)
     df[product_col] = df[product_col].map(_norm_turnover_cell)
+    if fallback_col is not None:
+        df[fallback_col] = df[fallback_col].map(_norm_turnover_cell)
+
     df = df.loc[~df[product_col].map(_is_turnover_excluded_product)].copy()
     if df.empty:
         return pd.DataFrame(columns=["Категория", "Оборачиваемость, дни"])
@@ -114,9 +167,7 @@ def prepare_turnover_table(
         if df.empty:
             return pd.DataFrame(columns=["Категория", "Оборачиваемость, дни"])
 
-    df["Категория"] = df[product_col].map(
-        lambda u3: _turnover_lookup_category(u3, map_u3)
-    )
+    _assign_turnover_categories(df, product_col, fallback_col, map_u4, map_u3)
 
     for col in ["Остаток сред.дн. (Q)", "Продажи (Q)"]:
         if col not in df.columns:
