@@ -43,9 +43,9 @@ def render_client_block(
     """Таблица метрик: накопительно и отчётная неделя."""
     if not embedded:
         st.markdown("---")
-        st.subheader("КЛИЕНТСКИЙ БЛОК")
+        st.subheader("Клиентский блок")
     else:
-        st.markdown("**КЛИЕНТСКИЙ БЛОК**")
+        st.markdown("**Клиентский блок**")
 
     if checks_clients is None or checks_clients.empty:
         st.info("Загрузите файл «Чеки и клиенты» для расчёта")
