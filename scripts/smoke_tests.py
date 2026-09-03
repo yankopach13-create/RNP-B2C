@@ -142,6 +142,7 @@ def test_normalize_app_data_legacy() -> None:
   _assert(migrated is not None, "migrated")
   _assert(migrated.focus_hookah is None, "focus_hookah default")
   _assert(migrated.checks_no_bk is None, "checks_no_bk default")
+  _assert(migrated.consumables_nesting is None, "consumables_nesting default")
   _assert(migrated.focus_fill_free is None, "focus_fill_free default")
 
 
@@ -223,6 +224,7 @@ def test_excel_export_hookah_sheet() -> None:
         turnover_90=None,
         focus_hookah=hookah,
         checks_no_bk=None,
+        consumables_nesting=None,
         focus_fill_free=None,
         groups_order_rnp=None,
         category_order_rnp=None,

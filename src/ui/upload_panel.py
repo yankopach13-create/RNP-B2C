@@ -14,6 +14,7 @@ class UploadedFiles:
     turnover_week: object = None
     turnover_90: object = None
     focus_hookah: object = None
+    consumables_nesting: object = None
     checks_no_bk: object = None
     run_analysis: bool = False
 
@@ -128,10 +129,15 @@ def render_upload_panel() -> UploadedFiles:
                 type=_XLSX_TYPES,
                 key="focus_hookah_uploader",
             )
+            consumables_nesting_file = st.file_uploader(
+                "Вложенность расходников",
+                type=_XLSX_TYPES,
+                key="consumables_nesting_uploader",
+            )
 
         with col_no_bk:
             render_section_header_with_help(
-                title="Динамика чеков без бк %",
+                title="% чеков без бк",
                 image_name="pct_no_bk.png",
                 caption=(
                     "Зайдите в Qlik под профилем User2.<br>"
@@ -171,6 +177,7 @@ def render_upload_panel() -> UploadedFiles:
             "turnover_week": turnover_week_file,
             "turnover_90": turnover_90_file,
             "focus_hookah": focus_hookah_file,
+            "consumables_nesting": consumables_nesting_file,
             "checks_no_bk": checks_no_bk_file,
         }
         st.session_state["run_analysis"] = True
@@ -182,6 +189,7 @@ def render_upload_panel() -> UploadedFiles:
             turnover_week=turnover_week_file,
             turnover_90=turnover_90_file,
             focus_hookah=focus_hookah_file,
+            consumables_nesting=consumables_nesting_file,
             checks_no_bk=checks_no_bk_file,
             run_analysis=True,
         )
@@ -195,6 +203,7 @@ def render_upload_panel() -> UploadedFiles:
             turnover_week=u.get("turnover_week"),
             turnover_90=u.get("turnover_90"),
             focus_hookah=u.get("focus_hookah"),
+            consumables_nesting=u.get("consumables_nesting"),
             checks_no_bk=u.get("checks_no_bk"),
             run_analysis=True,
         )

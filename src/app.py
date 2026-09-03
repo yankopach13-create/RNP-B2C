@@ -105,6 +105,7 @@ def main():
             data.turnover_week is not None,
             data.focus_hookah is not None,
             getattr(data, "checks_no_bk", None) is not None,
+            getattr(data, "consumables_nesting", None) is not None,
         ]
     )
 

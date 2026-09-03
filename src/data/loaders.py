@@ -33,6 +33,7 @@ class AppData:
     turnover_90: Optional[pd.DataFrame]
     focus_hookah: Optional[pd.DataFrame]
     checks_no_bk: Optional[pd.DataFrame]
+    consumables_nesting: Optional[pd.DataFrame]
     focus_fill_free: Optional[pd.DataFrame]
     groups_order_rnp: Optional[list[str]]
     category_order_rnp: Optional[list[str]]
@@ -43,6 +44,7 @@ class AppData:
 _APP_DATA_OPTIONAL_FIELDS = (
     "focus_hookah",
     "checks_no_bk",
+    "consumables_nesting",
     "focus_fill_free",
     "turnover_categories",
 )
@@ -66,6 +68,7 @@ def normalize_app_data(data: AppData | None) -> AppData | None:
         turnover_90=data.turnover_90,
         focus_hookah=getattr(data, "focus_hookah", None),
         checks_no_bk=getattr(data, "checks_no_bk", None),
+        consumables_nesting=getattr(data, "consumables_nesting", None),
         focus_fill_free=getattr(data, "focus_fill_free", None),
         groups_order_rnp=data.groups_order_rnp,
         category_order_rnp=data.category_order_rnp,
@@ -390,6 +393,18 @@ def load_all_data(files) -> AppData:
             ["количество чеков", "Количество чеков"],
         )
 
+    consumables_nesting_df = (
+        _read_excel(files.consumables_nesting, label="Вложенность расходников")
+        if getattr(files, "consumables_nesting", None)
+        else None
+    )
+    if consumables_nesting_df is not None:
+        consumables_nesting_df.columns = consumables_nesting_df.columns.str.strip()
+        _coerce_numeric_columns(
+            consumables_nesting_df,
+            ["количество чеков", "количество товара", "Количество чеков", "Количество товара"],
+        )
+
     return AppData(
         sales=sales_df,
         groups=groups_df,
@@ -402,6 +417,7 @@ def load_all_data(files) -> AppData:
         turnover_90=turnover_90_df,
         focus_hookah=focus_hookah_df,
         checks_no_bk=checks_no_bk_df,
+        consumables_nesting=consumables_nesting_df,
         focus_fill_free=None,
         groups_order_rnp=groups_order_rnp,
         category_order_rnp=category_order_rnp,
