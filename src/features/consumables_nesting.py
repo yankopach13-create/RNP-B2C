@@ -13,6 +13,11 @@ from config.constants import (
     PCT_NO_BK_COLUMN_SHOPS,
 )
 from data.references import REF_PCT_NO_BK, get_reference_label, load_reference
+from features.hookah_products import FOCUS_TABLE_VISIBLE_ROWS
+from features.metrics import (
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    _financial_dataframe_height,
+)
 
 COL_NESTING = "Вложенность"
 COL_SELLER = "Продавец"
@@ -51,7 +56,6 @@ _UPLOAD_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_TABLE_ROW_HEIGHT_PX = 35
 _NAME_COL_WIDTH_PX = 140
 _VALUE_COL_WIDTH_PX = 90
 _NESTING_DECIMALS = 3
@@ -427,14 +431,21 @@ def build_consumables_nesting_excel_table(
 
 
 def _render_order_table(table: pd.DataFrame, *, name_column: str) -> None:
+    table_height = _financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS)
     if table.empty:
-        st.dataframe(table, use_container_width=True, hide_index=True)
+        st.dataframe(
+            table,
+            use_container_width=True,
+            hide_index=True,
+            height=table_height,
+        )
         return
     st.dataframe(
         table,
         use_container_width=True,
         hide_index=True,
-        row_height=_TABLE_ROW_HEIGHT_PX,
+        height=table_height,
+        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config={
             name_column: st.column_config.TextColumn(
                 name_column,
