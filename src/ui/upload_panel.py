@@ -14,6 +14,7 @@ class UploadedFiles:
     turnover_week: object = None
     turnover_90: object = None
     focus_hookah: object = None
+    checks_no_bk: object = None
     run_analysis: bool = False
 
 
@@ -22,7 +23,7 @@ def render_upload_panel() -> UploadedFiles:
     inject_help_popover_styles()
     container = st.container()
     with container:
-        col_sales, col_turnover, col_clients, col_focus = st.columns(4)
+        col_sales, col_turnover, col_clients, col_focus, col_no_bk = st.columns(5)
 
         with col_sales:
             render_section_header_with_help(
@@ -128,6 +129,31 @@ def render_upload_panel() -> UploadedFiles:
                 key="focus_hookah_uploader",
             )
 
+        with col_no_bk:
+            render_section_header_with_help(
+                title="Динамика чеков без бк %",
+                image_name="pct_no_bk.png",
+                caption=(
+                    "Зайдите в Qlik под профилем User2.<br>"
+                    'В анализе чеков перейдите в закладку '
+                    '"АВТОМАТИЗАЦИЯ РНП B2С ( % чеков без бк)".<br><br>'
+                    "В фильтрах отберите актуальную неделю и скачайте отчёт "
+                    "без форматирования (не нажимайте галочку при скачивании).<br><br>"
+                    'Вставьте скачанный документ в контейнер «% чеков без бк».'
+                ),
+                caption_title="% чеков без бк",
+                align="right",
+            )
+            checks_no_bk_file = st.file_uploader(
+                "% чеков без бк",
+                type=_XLSX_TYPES,
+                key="checks_no_bk_uploader",
+                help=(
+                    "Столбцы: Магазин, Кассир, количество чеков, Код клиента. "
+                    "Чек без БК — строка с пустым кодом клиента."
+                ),
+            )
+
         _inject_upload_page_styles()
         st.markdown("")
         run_analysis = st.button(
@@ -145,6 +171,7 @@ def render_upload_panel() -> UploadedFiles:
             "turnover_week": turnover_week_file,
             "turnover_90": turnover_90_file,
             "focus_hookah": focus_hookah_file,
+            "checks_no_bk": checks_no_bk_file,
         }
         st.session_state["run_analysis"] = True
         container.empty()
@@ -155,6 +182,7 @@ def render_upload_panel() -> UploadedFiles:
             turnover_week=turnover_week_file,
             turnover_90=turnover_90_file,
             focus_hookah=focus_hookah_file,
+            checks_no_bk=checks_no_bk_file,
             run_analysis=True,
         )
 
@@ -167,6 +195,7 @@ def render_upload_panel() -> UploadedFiles:
             turnover_week=u.get("turnover_week"),
             turnover_90=u.get("turnover_90"),
             focus_hookah=u.get("focus_hookah"),
+            checks_no_bk=u.get("checks_no_bk"),
             run_analysis=True,
         )
 

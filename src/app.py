@@ -103,6 +103,8 @@ def main():
             data.lfl is not None,
             data.turnover_90 is not None,
             data.turnover_week is not None,
+            data.focus_hookah is not None,
+            getattr(data, "checks_no_bk", None) is not None,
         ]
     )
 
@@ -167,8 +169,6 @@ def _render_rnp_b2c_header(
         st.session_state.show_general_rnp_b2c_block = False
     if "show_ai_rnp_b2c_block" not in st.session_state:
         st.session_state.show_ai_rnp_b2c_block = False
-    if "show_checks_no_bk_block" not in st.session_state:
-        st.session_state.show_checks_no_bk_block = False
 
     toggle_label = (
         "▼ РНП B2C (нажмите, чтобы свернуть)"
@@ -256,30 +256,6 @@ def _render_rnp_b2c_header(
             excise_liquid_report_qty=excise_report,
         )
 
-    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-    checks_no_bk_toggle_label = (
-        "▼ % чеков без БК (нажмите, чтобы свернуть)"
-        if st.session_state.show_checks_no_bk_block
-        else "▶ % чеков без БК (нажмите, чтобы развернуть)"
-    )
-    col_checks_no_bk_toggle, col_checks_no_bk_spacer = st.columns([1.35, 1], gap="small")
-    with col_checks_no_bk_toggle:
-        if st.button(
-            checks_no_bk_toggle_label,
-            key="toggle_checks_no_bk_block_btn",
-            type="primary",
-            use_container_width=True,
-        ):
-            st.session_state.show_checks_no_bk_block = (
-                not st.session_state.show_checks_no_bk_block
-            )
-            st.rerun()
-    with col_checks_no_bk_spacer:
-        st.empty()
-
-    if st.session_state.show_checks_no_bk_block:
-        render_checks_no_bk_block(groups_df=data.groups)
-
 
 def _inject_rnp_block_styles() -> None:
     st.markdown(
@@ -345,28 +321,6 @@ def _inject_rnp_block_styles() -> None:
             box-shadow: none !important;
             outline: none !important;
         }
-        .st-key-toggle_checks_no_bk_block_btn button {
-            background-color: #5c3d8f !important;
-            color: #ffffff !important;
-            border: 1px solid #5c3d8f !important;
-            font-weight: 800 !important;
-            font-size: 1.05rem !important;
-            border-radius: 10px !important;
-            min-height: 44px !important;
-            padding: 0.5rem 1rem !important;
-            justify-content: flex-start !important;
-            text-align: left !important;
-        }
-        .st-key-toggle_checks_no_bk_block_btn button:hover,
-        .st-key-toggle_checks_no_bk_block_btn button:active,
-        .st-key-toggle_checks_no_bk_block_btn button:focus,
-        .st-key-toggle_checks_no_bk_block_btn button:focus-visible {
-            background-color: #4a3173 !important;
-            border-color: #4a3173 !important;
-            color: #ffffff !important;
-            box-shadow: none !important;
-            outline: none !important;
-        }
         div[data-testid="stDownloadButton"] button {
             background: transparent !important;
             color: inherit !important;
@@ -414,6 +368,11 @@ def _render_rnp_b2c_results(
 
     df_report = _filter_report_sales(df, week_config) if df is not None else None
     if df is not None and df_report is None:
+        _render_hookah_and_checks_no_bk(
+            data,
+            None,
+            week_config.report_week if week_config else None,
+        )
         return
 
     report_week = week_config.report_week if week_config else None
@@ -449,6 +408,7 @@ def _render_rnp_b2c_results(
     elif data.sales is not None:
         sales_report = _filter_report_sales(data.sales, week_config)
         if sales_report is None:
+            _render_hookah_and_checks_no_bk(data, None, report_week)
             return
         if _can_build_financial_metrics(sales_report):
             st.subheader("Финансовые метрики")
@@ -474,6 +434,8 @@ def _render_rnp_b2c_results(
             excise_lfl_qty=excise_lfl,
             excise_report_qty=excise_report,
         )
+    else:
+        _render_hookah_and_checks_no_bk(data, None, report_week)
 
 
 def _inject_week_selector_input_styles() -> None:
@@ -630,6 +592,28 @@ def _build_shop_economy_table_simple(
     )
 
 
+def _render_hookah_and_checks_no_bk(
+    data: AppData,
+    sales_df: pd.DataFrame | None,
+    report_week: int | None,
+) -> None:
+    """Кальянная продукция и % чеков без БК внизу вкладки РНП B2C."""
+    st.divider()
+    render_hookah_products_block(
+        sales_df=sales_df if sales_df is not None else data.sales,
+        focus_hookah=data.focus_hookah,
+        groups_df=data.groups,
+        report_week=None if sales_df is not None else report_week,
+        embedded=True,
+    )
+    st.divider()
+    render_checks_no_bk_block(
+        upload_df=getattr(data, "checks_no_bk", None),
+        groups_df=data.groups,
+        embedded=True,
+    )
+
+
 def _render_shop_economy_and_lfl(
     data: AppData,
     sales_df: pd.DataFrame | None,
@@ -639,19 +623,11 @@ def _render_shop_economy_and_lfl(
     excise_lfl_qty: float = 0.0,
     excise_report_qty: float = 0.0,
 ) -> None:
-    """План-факт магазины, факторный анализ и кальянная продукция."""
-    hookah_kwargs = {
-        "sales_df": sales_df if sales_df is not None else data.sales,
-        "focus_hookah": data.focus_hookah,
-        "groups_df": data.groups,
-        "report_week": None if sales_df is not None else report_week,
-        "embedded": True,
-    }
+    """План-факт магазины, факторный анализ, кальянная продукция и % чеков без БК."""
     has_shop = sales_df is not None and not sales_df.empty
     has_lfl = data.lfl is not None
     if not has_shop and not has_lfl:
-        st.divider()
-        render_hookah_products_block(**hookah_kwargs)
+        _render_hookah_and_checks_no_bk(data, sales_df, report_week)
         return
 
     st.divider()
@@ -718,8 +694,7 @@ def _render_shop_economy_and_lfl(
                 "(загрузите продажи с колонкой «Неделя» или отдельный файл)."
             )
 
-    st.divider()
-    render_hookah_products_block(**hookah_kwargs)
+    _render_hookah_and_checks_no_bk(data, sales_df, report_week)
 
 
 if __name__ == "__main__":

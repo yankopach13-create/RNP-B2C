@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import html
-import io
 import re
 
 import pandas as pd
@@ -14,7 +13,6 @@ from config.constants import (
     PCT_NO_BK_COLUMN_SELLERS,
     PCT_NO_BK_COLUMN_SHOPS,
 )
-from data.loaders import _read_excel
 from data.references import (
     REF_PCT_NO_BK,
     get_reference_label,
@@ -24,7 +22,6 @@ from data.references import (
 )
 from features.clients import _has_client_code
 from features.reference_update import append_seller_to_pct_no_bk
-from ui.upload_help import inject_help_popover_styles, render_section_header_with_help
 
 COL_PCT_NO_BK = "% без БК"
 COL_SELLER = "Продавец"
@@ -58,9 +55,6 @@ _UPLOAD_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
 _TABLE_ROW_HEIGHT_PX = 35
 _NAME_COL_WIDTH_PX = 210
 _VALUE_COL_WIDTH_PX = 90
-
-_XLSX_TYPES = ["xlsx", "xls"]
-_SESSION_BYTES_KEY = "checks_no_bk_uploaded_bytes"
 
 _NEW_SELLER_ROW_COL_WIDTHS = [2.4, 1]
 
@@ -508,37 +502,6 @@ def _load_pct_no_bk_reference() -> pd.DataFrame | None:
         return None
 
 
-def _read_checks_no_bk_bytes(content: bytes, *, label: str) -> pd.DataFrame | None:
-    if not content:
-        return None
-    try:
-        return _read_excel(io.BytesIO(content), label=label)
-    except ValueError as exc:
-        st.error(str(exc))
-        return None
-
-
-def _inject_checks_no_bk_upload_styles() -> None:
-    inject_help_popover_styles()
-    st.markdown(
-        """
-        <style>
-        .checks-no-bk-block [data-testid="stCaption"],
-        .checks-no-bk-block div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"],
-        .checks-no-bk-block div[data-testid="stFileUploader"] [data-testid="stFileUploaderFileSize"],
-        .checks-no-bk-block div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] ~ div,
-        .checks-no-bk-block div[data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] p {
-            display: none !important;
-        }
-        .checks-no-bk-upload .help-popover {
-            width: auto;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def _render_order_table(
     table: pd.DataFrame,
     *,
@@ -572,11 +535,17 @@ def _render_order_table(
 
 def render_checks_no_bk_block(
     *,
+    upload_df: pd.DataFrame | None = None,
     groups_df: pd.DataFrame | None = None,
+    embedded: bool = False,
 ) -> None:
-    """Загрузчик Excel и три таблицы (продавцы, магазины, группы)."""
+    """Три таблицы (продавцы, магазины, группы) по загруженному файлу."""
     try:
-        _render_checks_no_bk_block_impl(groups_df=groups_df)
+        _render_checks_no_bk_block_impl(
+            upload_df=upload_df,
+            groups_df=groups_df,
+            embedded=embedded,
+        )
     except Exception as exc:  # noqa: BLE001
         st.error("Ошибка в блоке «% чеков без БК».")
         st.exception(exc)
@@ -584,59 +553,19 @@ def render_checks_no_bk_block(
 
 def _render_checks_no_bk_block_impl(
     *,
+    upload_df: pd.DataFrame | None = None,
     groups_df: pd.DataFrame | None = None,
+    embedded: bool = False,
 ) -> None:
-    st.markdown("---")
-    st.markdown('<div class="checks-no-bk-block">', unsafe_allow_html=True)
-    _inject_checks_no_bk_upload_styles()
+    if not embedded:
+        st.markdown("---")
+        st.subheader("% чеков без БК")
+    else:
+        st.markdown("**% чеков без БК**")
 
-    col_upload, _col_spacer = st.columns([1, 3], gap="small")
-    with col_upload:
-        st.markdown('<div class="checks-no-bk-upload">', unsafe_allow_html=True)
-        render_section_header_with_help(
-            title="Динамика чеков без бк %",
-            image_name="pct_no_bk.png",
-            caption=(
-                "Зайдите в Qlik под профилем User2.<br>"
-                'В анализе чеков перейдите в закладку '
-                '"АВТОМАТИЗАЦИЯ РНП B2С ( % чеков без бк)".<br><br>'
-                "В фильтрах отберите актуальную неделю и скачайте отчёт "
-                "без форматирования (не нажимайте галочку при скачивании).<br><br>"
-                'Вставьте скачанный документ в контейнер «% чеков без бк».'
-            ),
-            align="left",
-            popover_key="checks-no-bk-dynamics",
-        )
-
-        uploaded = st.file_uploader(
-            "Загрузите Excel",
-            type=_XLSX_TYPES,
-            key="checks_no_bk_uploader",
-            label_visibility="collapsed",
-            help=(
-                "Столбцы: Магазин, Кассир, количество чеков, Код клиента. "
-                "Чек без БК — строка с пустым кодом клиента."
-            ),
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if uploaded is not None:
-        st.session_state[_SESSION_BYTES_KEY] = uploaded.getvalue()
-
-    upload_bytes: bytes | None = None
-    if uploaded is not None:
-        upload_bytes = uploaded.getvalue()
-    elif _SESSION_BYTES_KEY in st.session_state:
-        raw_bytes = st.session_state.get(_SESSION_BYTES_KEY)
-        if isinstance(raw_bytes, (bytes, bytearray)) and raw_bytes:
-            upload_bytes = bytes(raw_bytes)
-
-    upload_df: pd.DataFrame | None = None
-    if upload_bytes:
-        upload_df = _read_checks_no_bk_bytes(upload_bytes, label="Файл % без БК")
-        if upload_df is not None and upload_df.empty:
-            st.warning("Загруженный файл не содержит данных.")
-            upload_df = None
+    if upload_df is not None and upload_df.empty:
+        st.warning("Загруженный файл не содержит данных.")
+        upload_df = None
 
     reference_df = _load_pct_no_bk_reference()
     if reference_df is not None:
@@ -698,5 +627,3 @@ def _render_checks_no_bk_block_impl(
             build_groups_no_bk_table(reference_df, upload_df, groups_df),
             name_column=COL_GROUP,
         )
-
-    st.markdown("</div>", unsafe_allow_html=True)

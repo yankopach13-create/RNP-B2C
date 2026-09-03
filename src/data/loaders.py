@@ -32,6 +32,7 @@ class AppData:
     turnover_week: Optional[pd.DataFrame]
     turnover_90: Optional[pd.DataFrame]
     focus_hookah: Optional[pd.DataFrame]
+    checks_no_bk: Optional[pd.DataFrame]
     focus_fill_free: Optional[pd.DataFrame]
     groups_order_rnp: Optional[list[str]]
     category_order_rnp: Optional[list[str]]
@@ -39,7 +40,12 @@ class AppData:
     turnover_categories: Optional[list[str]]
     shops_order: Optional[list[str]]
 
-_APP_DATA_OPTIONAL_FIELDS = ("focus_hookah", "focus_fill_free", "turnover_categories")
+_APP_DATA_OPTIONAL_FIELDS = (
+    "focus_hookah",
+    "checks_no_bk",
+    "focus_fill_free",
+    "turnover_categories",
+)
 
 
 def normalize_app_data(data: AppData | None) -> AppData | None:
@@ -59,6 +65,7 @@ def normalize_app_data(data: AppData | None) -> AppData | None:
         turnover_week=data.turnover_week,
         turnover_90=data.turnover_90,
         focus_hookah=getattr(data, "focus_hookah", None),
+        checks_no_bk=getattr(data, "checks_no_bk", None),
         focus_fill_free=getattr(data, "focus_fill_free", None),
         groups_order_rnp=data.groups_order_rnp,
         category_order_rnp=data.category_order_rnp,
@@ -371,6 +378,18 @@ def load_all_data(files) -> AppData:
             ["количество чеков", "количество товара", "Количество чеков", "Количество товара"],
         )
 
+    checks_no_bk_df = (
+        _read_excel(files.checks_no_bk, label="% чеков без бк")
+        if getattr(files, "checks_no_bk", None)
+        else None
+    )
+    if checks_no_bk_df is not None:
+        checks_no_bk_df.columns = checks_no_bk_df.columns.str.strip()
+        _coerce_numeric_columns(
+            checks_no_bk_df,
+            ["количество чеков", "Количество чеков"],
+        )
+
     return AppData(
         sales=sales_df,
         groups=groups_df,
@@ -382,6 +401,7 @@ def load_all_data(files) -> AppData:
         turnover_week=turnover_week_df,
         turnover_90=turnover_90_df,
         focus_hookah=focus_hookah_df,
+        checks_no_bk=checks_no_bk_df,
         focus_fill_free=None,
         groups_order_rnp=groups_order_rnp,
         category_order_rnp=category_order_rnp,
