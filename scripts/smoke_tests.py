@@ -304,6 +304,23 @@ def test_checks_no_bk_new_sellers() -> None:
     _assert(not added2, "duplicate blocked")
     _assert(len(df2) == len(df), "no extra row on duplicate")
 
+    batch_df = ref.copy()
+    added_names: list[str] = []
+    for name in ("Сидоров", "Новиков А.А.", "Кузнецов"):
+        batch_df, was_added, batch_err = _mutate_pct_no_bk_append_seller(batch_df, name)
+        _assert(batch_err is None, f"batch {name}")
+        if was_added:
+            added_names.append(name)
+    _assert(added_names == ["Сидоров", "Новиков А.А.", "Кузнецов"], f"added {added_names}")
+    _assert(
+        [str(v) for v in batch_df["Порядок продавцов"].tolist() if str(v).strip()]
+        == ["Иванов", "Сидоров", "Новиков А.А.", "Кузнецов"],
+        "order after batch",
+    )
+    batch_df2, dup_added, _ = _mutate_pct_no_bk_append_seller(batch_df, "Сидоров")
+    _assert(not dup_added, "batch duplicate blocked")
+    _assert(len(batch_df2) == len(batch_df), "no extra row after batch dup")
+
 
 def test_ai_report_category_rows() -> None:
     labels = [label for label, _ in ai_category_metric_rows()]

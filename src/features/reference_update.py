@@ -657,11 +657,11 @@ def _mutate_pct_no_bk_append_seller(
     return df, True, None
 
 
-def append_seller_to_pct_no_bk(seller_name: str) -> tuple[bool, str]:
-    """Добавляет продавца в конец столбца «Порядок продавцов» листа %_bk."""
-    seller_name = str(seller_name).strip()
-    if not seller_name:
-        return False, "Пустое имя продавца."
+def append_sellers_to_pct_no_bk(seller_names: list[str]) -> tuple[bool, str]:
+    """Добавляет продавцов в конец «Порядок продавцов» одним запросом."""
+    names = [str(name).strip() for name in seller_names if str(name).strip()]
+    if not names:
+        return False, "Нет продавцов для добавления."
 
     default_cols = [
         PCT_NO_BK_COLUMN_SELLERS,
@@ -675,19 +675,39 @@ def append_seller_to_pct_no_bk(seller_name: str) -> tuple[bool, str]:
     else:
         df = pd.DataFrame(columns=default_cols)
 
-    df, was_added, mut_err = _mutate_pct_no_bk_append_seller(df, seller_name)
-    if mut_err:
-        return False, mut_err
-    if not was_added:
-        return True, "Продавец уже есть в справочнике."
+    added: list[str] = []
+    for name in names:
+        df, was_added, mut_err = _mutate_pct_no_bk_append_seller(df, name)
+        if mut_err:
+            return False, mut_err
+        if was_added:
+            added.append(name)
+
+    if not added:
+        if len(names) == 1:
+            return True, "Продавец уже есть в справочнике."
+        return True, "Все продавцы уже есть в справочнике."
 
     try:
-        append_reference_rows(REF_PCT_NO_BK, df.tail(1))
+        append_reference_rows(REF_PCT_NO_BK, df.tail(len(added)))
     except Exception as exc:  # noqa: BLE001
         return False, (
             f"Не удалось записать в {get_reference_storage_hint(REF_PCT_NO_BK)}: {exc}"
         )
-    return True, f"Продавец «{seller_name}» добавлен в конец списка."
+
+    if len(added) == 1:
+        return True, f"Продавец «{added[0]}» добавлен в конец списка."
+    skipped = len(names) - len(added)
+    if skipped:
+        return True, (
+            f"Добавлено продавцов: {len(added)} (уже были в списке: {skipped})."
+        )
+    return True, f"Добавлено продавцов: {len(added)}."
+
+
+def append_seller_to_pct_no_bk(seller_name: str) -> tuple[bool, str]:
+    """Добавляет продавца в конец столбца «Порядок продавцов» листа %_bk."""
+    return append_sellers_to_pct_no_bk([seller_name])
 
 
 def category_triple_keys_set(category_df: pd.DataFrame) -> set[str]:

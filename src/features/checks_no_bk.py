@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 import re
 
 import pandas as pd
@@ -21,7 +20,7 @@ from data.references import (
     sheets_configured,
 )
 from features.clients import _has_client_code
-from features.reference_update import append_seller_to_pct_no_bk
+from features.reference_update import append_sellers_to_pct_no_bk
 
 COL_PCT_NO_BK = "% без БК"
 COL_SELLER = "Продавец"
@@ -55,8 +54,6 @@ _UPLOAD_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
 _TABLE_ROW_HEIGHT_PX = 35
 _NAME_COL_WIDTH_PX = 210
 _VALUE_COL_WIDTH_PX = 90
-
-_NEW_SELLER_ROW_COL_WIDTHS = [2.4, 1]
 
 
 def _key_part(value: str) -> str:
@@ -183,27 +180,29 @@ def _render_new_sellers_panel(new_sellers: list[str], *, file_loaded: bool) -> N
         unsafe_allow_html=True,
     )
     with st.container(border=True):
+        selected: list[str] = []
         for index, seller in enumerate(new_sellers):
-            col_name, col_btn = st.columns(_NEW_SELLER_ROW_COL_WIDTHS)
             key_suffix = f"{index}_{_key_part(seller)}"
-            with col_name:
-                st.markdown(
-                    '<div style="color:#b1bac4;font-size:0.9rem;line-height:2.4rem;">'
-                    f"{html.escape(seller)}</div>",
-                    unsafe_allow_html=True,
-                )
-            with col_btn:
-                if st.button(
-                    "Добавить",
-                    key=f"checks_no_bk_add_seller_{key_suffix}",
-                    use_container_width=True,
-                ):
-                    ok, message = append_seller_to_pct_no_bk(seller)
-                    if ok:
-                        st.success(message)
-                    else:
-                        st.error(message)
-                    st.rerun()
+            if st.checkbox(
+                seller,
+                value=True,
+                key=f"checks_no_bk_seller_sel_{key_suffix}",
+            ):
+                selected.append(seller)
+        if st.button(
+            "Добавить выбранных",
+            key="checks_no_bk_add_selected_sellers",
+            use_container_width=True,
+        ):
+            if not selected:
+                st.warning("Отметьте хотя бы одного продавца.")
+            else:
+                ok, message = append_sellers_to_pct_no_bk(selected)
+                if ok:
+                    st.success(message)
+                else:
+                    st.error(message)
+                st.rerun()
 
 
 def _reference_column_series(df: pd.DataFrame, column: str) -> pd.Series:
