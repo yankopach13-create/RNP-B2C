@@ -516,19 +516,16 @@ def _render_consumables_nesting_block_impl(
 
     col_sellers, col_shops, col_groups = st.columns([1, 1, 1])
     with col_sellers:
-        st.markdown("**Продавцы**")
         _render_order_table(
             build_sellers_nesting_table(reference_df, upload_df),
             name_column=COL_SELLER,
         )
     with col_shops:
-        st.markdown("**Магазины**")
         _render_order_table(
             build_shops_nesting_table(reference_df, upload_df),
             name_column=COL_SHOP,
         )
     with col_groups:
-        st.markdown("**Группы**")
         _render_order_table(
             build_groups_nesting_table(reference_df, upload_df, groups_df),
             name_column=COL_GROUP,

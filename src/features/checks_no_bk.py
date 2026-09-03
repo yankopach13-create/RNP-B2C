@@ -608,21 +608,18 @@ def _render_checks_no_bk_block_impl(
     col_sellers, col_shops, col_groups = st.columns([1, 1, 1])
 
     with col_sellers:
-        st.markdown("**Продавцы**")
         _render_order_table(
             build_sellers_no_bk_table(reference_df, upload_df),
             name_column=COL_SELLER,
         )
 
     with col_shops:
-        st.markdown("**Магазины**")
         _render_order_table(
             build_shops_no_bk_table(reference_df, upload_df),
             name_column=COL_SHOP,
         )
 
     with col_groups:
-        st.markdown("**Группы**")
         _render_order_table(
             build_groups_no_bk_table(reference_df, upload_df, groups_df),
             name_column=COL_GROUP,
