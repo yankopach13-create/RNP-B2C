@@ -25,6 +25,7 @@ from features.data_prep import (
 from features.clients import render_client_block
 from features.lfl import build_lfl_factor_table, render_lfl_block
 from features.hookah_products import render_hookah_products_block
+from features.consumables_nesting import render_consumables_nesting_block
 from features.metrics import (
     render_financial_metrics_table,
     render_global_metrics,
@@ -598,15 +599,23 @@ def _render_hookah_and_checks_no_bk(
     sales_df: pd.DataFrame | None,
     report_week: int | None,
 ) -> None:
-    """Кальянная продукция и % чеков без БК внизу вкладки РНП B2C."""
+    """Кальянная продукция, вложенность расходников и % чеков без БК."""
     st.divider()
-    render_hookah_products_block(
-        sales_df=sales_df if sales_df is not None else data.sales,
-        focus_hookah=data.focus_hookah,
-        groups_df=data.groups,
-        report_week=None if sales_df is not None else report_week,
-        embedded=True,
-    )
+    col_hookah, col_nesting = st.columns([1, 1.7], gap="medium")
+    with col_hookah:
+        render_hookah_products_block(
+            sales_df=sales_df if sales_df is not None else data.sales,
+            focus_hookah=data.focus_hookah,
+            groups_df=data.groups,
+            report_week=None if sales_df is not None else report_week,
+            embedded=True,
+        )
+    with col_nesting:
+        render_consumables_nesting_block(
+            upload_df=getattr(data, "consumables_nesting", None),
+            groups_df=data.groups,
+            embedded=True,
+        )
     st.divider()
     render_checks_no_bk_block(
         upload_df=getattr(data, "checks_no_bk", None),
@@ -624,7 +633,7 @@ def _render_shop_economy_and_lfl(
     excise_lfl_qty: float = 0.0,
     excise_report_qty: float = 0.0,
 ) -> None:
-    """План-факт магазины, факторный анализ, кальянная продукция и % чеков без БК."""
+    """План-факт магазины, факторный анализ, кальян, вложенность расходников и % без БК."""
     has_shop = sales_df is not None and not sales_df.empty
     has_lfl = data.lfl is not None
     if not has_shop and not has_lfl:

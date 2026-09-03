@@ -34,6 +34,13 @@ from features.checks_no_bk import (  # noqa: E402
     build_shops_no_bk_table,
     collect_new_sellers,
 )
+from features.consumables_nesting import (  # noqa: E402
+    COL_NESTING,
+    build_consumables_nesting_excel_table,
+    build_groups_nesting_table,
+    build_sellers_nesting_table,
+    build_shops_nesting_table,
+)
 from features.reference_update import (  # noqa: E402
     _mutate_categories_add_product,
     _mutate_pct_no_bk_append_seller,
@@ -242,6 +249,7 @@ def test_excel_export_hookah_sheet() -> None:
     names = [spec.name for spec in sheets]
     _assert("Кальянная продукция" in names, "hookah sheet")
     _assert("Fill free" not in names, "no fill free sheet")
+    _assert("Вложенность расходников" not in names, "no nesting sheet without file")
 
 
 def test_mutate_categories_add_product() -> None:
@@ -430,6 +438,107 @@ def test_checks_no_bk_pcts() -> None:
     )
 
 
+def test_consumables_nesting_values() -> None:
+    ref = pd.DataFrame(
+        {
+            "Порядок продавцов": ["Иванов", "Петров"],
+            "Порядок магазинов": ["Магазин A", "Магазин B"],
+            "Порядок групп": ["Восток", "Юг"],
+        }
+    )
+    upload = pd.DataFrame(
+        {
+            "Кассир": ["Иванов", "Иванов", "Петров", "Петров"],
+            "Магазин": ["Магазин A", "Магазин A", "Магазин B", "Магазин B"],
+            "кол-во чеков": [10, 5, 8, 2],
+            "кол-во товара": [6, 3, 4, 0],
+        }
+    )
+    groups = pd.DataFrame(
+        {"Магазин": ["Магазин A", "Магазин B"], "Группа": ["Восток", "Юг"]}
+    )
+    sellers = build_sellers_nesting_table(ref, upload)
+    _assert(
+        sellers.loc[sellers["Продавец"] == "Иванов", COL_NESTING].iloc[0] == "0,600",
+        "seller ivanov nesting",
+    )
+    shops = build_shops_nesting_table(ref, upload)
+    _assert(
+        shops.loc[shops["Магазин"] == "Магазин B", COL_NESTING].iloc[0] == "0,400",
+        "shop b nesting",
+    )
+    gr = build_groups_nesting_table(ref, upload, groups)
+    _assert(
+        gr.loc[gr["Группа"] == "Восток", COL_NESTING].iloc[0] == "0,600",
+        "group east nesting",
+    )
+    excel_table = build_consumables_nesting_excel_table(ref, upload, groups)
+    _assert(excel_table is not None, "excel table")
+    _assert("Продавец" in excel_table.columns, "seller col")
+    _assert("Магазин" in excel_table.columns, "shop col")
+    _assert("Группа" in excel_table.columns, "group col")
+
+
+def test_excel_export_consumables_sheet() -> None:
+    from data.loaders import AppData
+    from features import excel_export
+    from features.excel_export import collect_rnp_b2c_sheets
+    from features.excise_liquid import WeekCalculationConfig
+
+    ref = pd.DataFrame(
+        {
+            "Порядок продавцов": ["Иванов"],
+            "Порядок магазинов": ["Магазин A"],
+            "Порядок групп": ["Восток"],
+        }
+    )
+    upload = pd.DataFrame(
+        {
+            "Кассир": ["Иванов"],
+            "Магазин": ["Магазин A"],
+            "количество чеков": [10],
+            "количество товара": [6],
+        }
+    )
+    data = AppData(
+        sales=None,
+        groups=pd.DataFrame({"Магазин": ["Магазин A"], "Группа": ["Восток"]}),
+        categories=None,
+        checks_clients=None,
+        client_segments=None,
+        focus=None,
+        lfl=None,
+        turnover_week=None,
+        turnover_90=None,
+        focus_hookah=None,
+        checks_no_bk=None,
+        consumables_nesting=upload,
+        focus_fill_free=None,
+        groups_order_rnp=None,
+        category_order_rnp=None,
+        category_order_general=None,
+        turnover_categories=None,
+        shops_order=None,
+    )
+    original = excel_export.load_pct_no_bk_reference
+    excel_export.load_pct_no_bk_reference = lambda: ref
+    try:
+        sheets = collect_rnp_b2c_sheets(
+            data,
+            None,
+            WeekCalculationConfig(
+                lfl_week=9,
+                report_week=10,
+                excise_liquid_lfl=0.0,
+                excise_liquid_report=0.0,
+            ),
+        )
+    finally:
+        excel_export.load_pct_no_bk_reference = original
+    names = [spec.name for spec in sheets]
+    _assert("Вложенность расходников" in names, "nesting sheet")
+
+
 def test_turnover_by_level4() -> None:
     inventory = pd.DataFrame(
         {
@@ -515,6 +624,8 @@ OFFLINE_TESTS = [
     test_mutate_categories_add_product,
     test_checks_no_bk_new_sellers,
     test_checks_no_bk_pcts,
+    test_consumables_nesting_values,
+    test_excel_export_consumables_sheet,
     test_turnover_by_level4,
     test_turnover_level4_fallback_u3,
     test_turnover_legacy_level3,

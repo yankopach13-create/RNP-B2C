@@ -26,6 +26,10 @@ from features.data_prep import filter_sales_by_report_week
 from features.excise_liquid import WeekCalculationConfig
 from features.focus import build_focus_display_df
 from features.hookah_products import build_hookah_products_table
+from features.consumables_nesting import (
+    build_consumables_nesting_excel_table,
+    load_pct_no_bk_reference,
+)
 from features.lfl import build_lfl_factor_table
 from features.metrics import (
     _build_category_sales_general_rows,
@@ -291,6 +295,21 @@ def collect_rnp_b2c_sheets(
                 )
             )
 
+    upload_df = getattr(data, "consumables_nesting", None)
+    if upload_df is not None:
+        nesting_table = build_consumables_nesting_excel_table(
+            reference_df=load_pct_no_bk_reference(),
+            upload_df=upload_df,
+            groups_df=data.groups,
+        )
+        if nesting_table is not None and not nesting_table.empty:
+            sheets.append(
+                ExcelSheetSpec(
+                    name="Вложенность расходников",
+                    table=_prepare_table_for_excel(nesting_table),
+                )
+            )
+
     return sheets
 
 
@@ -430,6 +449,7 @@ def _style_worksheet(
             elif sheet_name in (
                 "Клиентский блок",
                 "Кальянная продукция",
+                "Вложенность расходников",
             ) and col_idx == 1 and str(value).strip():
                 cell.font = BOLD_FONT
             else:
