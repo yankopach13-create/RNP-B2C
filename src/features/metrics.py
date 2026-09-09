@@ -767,8 +767,6 @@ def _render_liquid_margin_audit_block_impl(
         excise_lfl=excise_lfl,
         excise_report=excise_report,
         category_summary=category_summary,
-        report_audit=report_audit,
-        lfl_audit=lfl_audit,
     )
 
 
@@ -777,8 +775,6 @@ def _render_liquid_margin_audit_reference(
     excise_lfl,
     excise_report,
     category_summary: pd.DataFrame,
-    report_audit,
-    lfl_audit,
 ) -> None:
     """Справочные подписи под кнопкой скачивания проверки себестоимости."""
     from features.liquid_margin import format_excise_parse_status
@@ -820,28 +816,6 @@ def _render_liquid_margin_audit_reference(
         st.markdown("**Изменение маржи**")
         for line in margin_lines:
             st.caption(line)
-        st.write("")
-
-    detail_lines: list[str] = []
-    if report_audit is not None:
-        detail_df, summary_df = report_audit
-        diff_rows = int(
-            (detail_df["Маржа расчётная"] - detail_df["Маржа в отчёте"]).abs().gt(0.01).sum()
-        )
-        detail_lines.append(
-            f"Отчётная: строк {len(detail_df)}, SKU {len(summary_df)}"
-            + (f", расхождений {diff_rows}" if diff_rows else "")
-        )
-    if lfl_audit is not None:
-        lfl_detail, lfl_summary = lfl_audit
-        detail_lines.append(f"LFL: строк {len(lfl_detail)}, SKU {len(lfl_summary)}")
-
-    if detail_lines:
-        has_content = True
-        st.markdown("**Детализация проверки**")
-        for line in detail_lines:
-            st.caption(line)
-
     if not has_content:
         st.caption("Справочная информация появится после загрузки файлов акциза и продаж.")
 
