@@ -49,6 +49,11 @@ def render_global_metrics(
     checks_clients_df: pd.DataFrame | None = None,
     report_week: int | None = None,
     turnover_table: pd.DataFrame | None = None,
+    liquid_audit_sales_original: pd.DataFrame | None = None,
+    liquid_audit_cost=None,
+    liquid_audit_excise_lfl=None,
+    liquid_audit_excise_report=None,
+    liquid_audit_lfl_week: int | None = None,
 ):
     if df is None or df.empty:
         st.warning("Нет данных для отображения общих метрик.")
@@ -58,7 +63,7 @@ def render_global_metrics(
     has_financial = _can_build_financial_metrics(df)
 
     if has_financial or has_category:
-        col_fin, col_cat = st.columns([1, 1])
+        col_fin, col_cat, col_audit = st.columns([1, 1, 0.85])
 
         with col_fin:
             st.subheader("Финансовые метрики")
@@ -82,6 +87,17 @@ def render_global_metrics(
                 )
             else:
                 st.info("Нет данных по продажам категорий.")
+
+        with col_audit:
+            render_liquid_margin_audit_block(
+                liquid_audit_sales_original,
+                df,
+                liquid_audit_cost,
+                liquid_audit_excise_lfl,
+                liquid_audit_excise_report,
+                lfl_week=liquid_audit_lfl_week,
+                report_week=report_week,
+            )
 
     if turnover_table is None:
         turnover_table = _build_turnover_summary(
@@ -601,6 +617,62 @@ def _build_category_sales_group_rows(
                 )
             )
     return rows
+
+
+def render_liquid_margin_audit_block(
+    sales_original: pd.DataFrame | None,
+    sales_adjusted: pd.DataFrame | None,
+    cost_df,
+    excise_lfl,
+    excise_report,
+    *,
+    lfl_week: int | None = None,
+    report_week: int | None = None,
+) -> None:
+    """Кнопка скачивания Excel с детализацией расчёта маржи жидкости."""
+    from features.liquid_margin import (
+        build_liquid_margin_audit,
+        export_liquid_margin_audit_bytes,
+        liquid_margin_audit_filename,
+    )
+
+    st.subheader("Проверка расчёта себестоимости")
+    if sales_original is None or sales_original.empty:
+        st.caption("Нет данных продаж для проверки.")
+        return
+    if cost_df is None:
+        st.caption("Загрузите файл «Себестоимость жидкости».")
+        return
+
+    audit = build_liquid_margin_audit(
+        sales_original,
+        sales_adjusted,
+        cost_df,
+        excise_lfl,
+        excise_report,
+        lfl_week=lfl_week,
+        report_week=report_week,
+    )
+    if audit is None:
+        st.caption("Нет строк категории «Жидкость 25 мл» для проверки.")
+        return
+
+    detail_df, summary_df = audit
+    diff_rows = int((detail_df["Маржа расчётная"] - detail_df["Маржа в отчёте"]).abs().gt(0.01).sum())
+    st.caption(
+        f"Строк: {len(detail_df)}, SKU: {len(summary_df)}"
+        + (f", расхождений: {diff_rows}" if diff_rows else "")
+    )
+    excel_bytes = export_liquid_margin_audit_bytes(detail_df, summary_df)
+    st.download_button(
+        label="Скачать проверку в Excel",
+        data=excel_bytes,
+        file_name=liquid_margin_audit_filename(report_week),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="secondary",
+        use_container_width=True,
+        key="download_liquid_margin_audit",
+    )
 
 
 def render_category_sales_table(

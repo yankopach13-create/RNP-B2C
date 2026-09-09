@@ -20,6 +20,7 @@ from data.loaders import AppData
 from data.references import is_sheets_quota_error
 from features.data_prep import (
     default_lfl_and_report_weeks,
+    filter_sales_by_report_week,
     sales_week_numbers,
 )
 from features.clients import render_client_block
@@ -380,6 +381,10 @@ def _render_rnp_b2c_results(
     report_week = week_config.report_week if week_config else None
     lfl_week = week_config.lfl_week if week_config else None
 
+    sales_original_report = None
+    if prepared is not None and prepared.df is not None and report_week is not None:
+        sales_original_report = filter_sales_by_report_week(prepared.df, report_week)
+
     if df_report is not None:
         render_global_metrics(
             df_report,
@@ -395,6 +400,11 @@ def _render_rnp_b2c_results(
             checks_clients_df=data.checks_clients,
             report_week=report_week,
             turnover_table=get_cached_turnover_table(data),
+            liquid_audit_sales_original=sales_original_report,
+            liquid_audit_cost=data.liquid_cost,
+            liquid_audit_excise_lfl=data.excise_liquid_lfl,
+            liquid_audit_excise_report=data.excise_liquid_report,
+            liquid_audit_lfl_week=lfl_week,
         )
         _render_shop_economy_and_lfl(
             data,
