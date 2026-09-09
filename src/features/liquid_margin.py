@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
 from features.excise_liquid import CATEGORY_LIQUID_25ML
@@ -22,7 +24,7 @@ _COST_YEAR_WEEK = "Год-Неделя"
 _COST_QTY = "Продажи (Q)"
 _COST_SUM = "Продажи (Σ)"
 
-# Qlik/Excel могут отдавать ∑ (U+2211), Σ (U+03A3), латинскую E и варианты без пробелов.
+# Qlik/Excel: ∑ U+2211, Σ U+03A3, Ʃ U+0199 (African D), E/Е и варианты без пробелов.
 _COST_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     _COST_SHOP: (_COST_SHOP, "склад"),
     _COST_SKU: (_COST_SKU, "товар4", "Товар 4", "Товар ур.4"),
@@ -31,16 +33,21 @@ _COST_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     _COST_SUM: (
         _COST_SUM,
         "Продажи (∑)",
+        "Продажи (Ʃ)",
         "Продажи(Σ)",
         "Продажи(∑)",
+        "Продажи(Ʃ)",
         "Продажи (E)",
         "Продажи (Е)",
         "Продажи(E)",
         "Продажи(Е)",
         "продажи (σ)",
         "продажи (∑)",
+        "продажи (Ʃ)",
     ),
 }
+
+_COST_SUM_FALLBACK = re.compile(r"^продажи\([^q)]+\)$")
 
 _EXCISE_SKU_COL = 1
 _EXCISE_QTY_COL = 8
@@ -108,6 +115,11 @@ def _resolve_cost_columns(columns: list[str]) -> dict[str, str]:
             if key in normalized:
                 actual = normalized[key]
                 break
+        if actual is None and canonical == _COST_SUM:
+            for col in columns:
+                if _COST_SUM_FALLBACK.match(_normalize_column_key(col)):
+                    actual = col
+                    break
         if actual is None:
             missing.append(canonical)
         else:

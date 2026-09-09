@@ -650,7 +650,7 @@ def test_parse_liquid_cost_sum_column_aliases() -> None:
         "Год-Неделя": ["2026/32"],
         "Продажи (Q)": [10],
     }
-    for sum_col in ("Продажи (Σ)", "Продажи (∑)", "Продажи (E)"):
+    for sum_col in ("Продажи (Σ)", "Продажи (∑)", "Продажи (Ʃ)", "Продажи (E)"):
         df = pd.DataFrame({**base, sum_col: [500.0]})
         parsed = parse_liquid_cost(df)
         _assert(float(parsed.iloc[0]["buh_cost"]) == 500.0, f"sum alias {sum_col}")
