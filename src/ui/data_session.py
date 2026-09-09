@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import streamlit as st
 
+from typing import TYPE_CHECKING
+
 from data.loaders import AppData, load_all_data, normalize_app_data
-from features.categories import apply_category_reference
 from features.data_prep import PreparedSalesResult, filter_sales_by_report_week, prepare_sales_dataset
 from features.excise_liquid import WeekCalculationConfig
-from features.excel_export import build_rnp_b2c_excel_bytes
-from features.liquid_margin import recalculate_liquid_margins
 from features.metrics import _build_turnover_summary
-from ui.upload_panel import UploadedFiles
+
+if TYPE_CHECKING:
+    from ui.upload_panel import UploadedFiles
 
 RELOAD_REQUESTED_KEY = "data_reload_requested"
 DATA_VERSION_KEY = "data_version"
@@ -66,7 +67,7 @@ def _clear_derived_caches() -> None:
     st.session_state.pop(LIQUID_MARGIN_CACHE_VERSION_KEY, None)
 
 
-def load_and_store_app_data(files: UploadedFiles) -> tuple[AppData, PreparedSalesResult | None]:
+def load_and_store_app_data(files: "UploadedFiles") -> tuple[AppData, PreparedSalesResult | None]:
     """Читает Excel и подготавливает продажи; сбрасывает производные кэши."""
     data = normalize_app_data(load_all_data(files))
     prepared = None
@@ -148,6 +149,8 @@ def apply_liquid_margins(
     cache: dict = st.session_state.setdefault(LIQUID_MARGIN_CACHE_KEY, {})
     if cache_key in cache:
         return cache[cache_key]
+
+    from features.liquid_margin import recalculate_liquid_margins
 
     adjusted = recalculate_liquid_margins(
         sales_df,
