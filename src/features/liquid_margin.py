@@ -22,6 +22,26 @@ _COST_YEAR_WEEK = "Год-Неделя"
 _COST_QTY = "Продажи (Q)"
 _COST_SUM = "Продажи (Σ)"
 
+# Qlik/Excel могут отдавать ∑ (U+2211), Σ (U+03A3), латинскую E и варианты без пробелов.
+_COST_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    _COST_SHOP: (_COST_SHOP, "склад"),
+    _COST_SKU: (_COST_SKU, "товар4", "Товар 4", "Товар ур.4"),
+    _COST_YEAR_WEEK: (_COST_YEAR_WEEK, "год-неделя", "Год неделя"),
+    _COST_QTY: (_COST_QTY, "продажи (q)", "Продажи(Q)"),
+    _COST_SUM: (
+        _COST_SUM,
+        "Продажи (∑)",
+        "Продажи(Σ)",
+        "Продажи(∑)",
+        "Продажи (E)",
+        "Продажи (Е)",
+        "Продажи(E)",
+        "Продажи(Е)",
+        "продажи (σ)",
+        "продажи (∑)",
+    ),
+}
+
 _EXCISE_SKU_COL = 1
 _EXCISE_QTY_COL = 8
 _EXCISE_SUM_COL = 9
@@ -71,6 +91,38 @@ def _coerce_number(value) -> float | None:
         return None
 
 
+def _normalize_column_key(name: str) -> str:
+    return str(name).strip().casefold().replace(" ", "")
+
+
+def _resolve_cost_columns(columns: list[str]) -> dict[str, str]:
+    """Сопоставляет канонические имена столбцов с фактическими заголовками файла."""
+    normalized = {_normalize_column_key(col): col for col in columns}
+    resolved: dict[str, str] = {}
+    missing: list[str] = []
+
+    for canonical, aliases in _COST_COLUMN_ALIASES.items():
+        actual = None
+        for alias in aliases:
+            key = _normalize_column_key(alias)
+            if key in normalized:
+                actual = normalized[key]
+                break
+        if actual is None:
+            missing.append(canonical)
+        else:
+            resolved[canonical] = actual
+
+    if missing:
+        raise ValueError(
+            "В файле себестоимости жидкости отсутствуют столбцы: "
+            + ", ".join(sorted(missing))
+            + ". Найденные заголовки: "
+            + ", ".join(columns)
+        )
+    return resolved
+
+
 def parse_liquid_cost(raw: pd.DataFrame) -> pd.DataFrame:
     """Нормализует файл бух. себестоимости жидкости."""
     if raw is None or raw.empty:
@@ -78,21 +130,15 @@ def parse_liquid_cost(raw: pd.DataFrame) -> pd.DataFrame:
 
     df = raw.copy()
     df.columns = df.columns.astype(str).str.strip()
-    required = {_COST_SHOP, _COST_SKU, _COST_YEAR_WEEK, _COST_QTY, _COST_SUM}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(
-            "В файле себестоимости жидкости отсутствуют столбцы: "
-            + ", ".join(sorted(missing))
-        )
+    cols = _resolve_cost_columns(list(df.columns))
 
     out = pd.DataFrame(
         {
-            "shop": df[_COST_SHOP].map(_normalize_text),
-            "sku": df[_COST_SKU].map(_normalize_text),
-            "week": df[_COST_YEAR_WEEK].map(parse_year_week),
-            "qty": df[_COST_QTY].map(_coerce_number),
-            "buh_cost": df[_COST_SUM].map(_coerce_number),
+            "shop": df[cols[_COST_SHOP]].map(_normalize_text),
+            "sku": df[cols[_COST_SKU]].map(_normalize_text),
+            "week": df[cols[_COST_YEAR_WEEK]].map(parse_year_week),
+            "qty": df[cols[_COST_QTY]].map(_coerce_number),
+            "buh_cost": df[cols[_COST_SUM]].map(_coerce_number),
         }
     )
     out = out.loc[

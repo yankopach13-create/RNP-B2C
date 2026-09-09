@@ -641,6 +641,21 @@ def test_parse_excise_retail_block() -> None:
     _assert(parsed.iloc[0]["excise_sum"] == 1122, "excise sum")
 
 
+def test_parse_liquid_cost_sum_column_aliases() -> None:
+    from features.liquid_margin import parse_liquid_cost
+
+    base = {
+        "Склад": ["Shop A"],
+        "Товар4": ["SKU-1"],
+        "Год-Неделя": ["2026/32"],
+        "Продажи (Q)": [10],
+    }
+    for sum_col in ("Продажи (Σ)", "Продажи (∑)", "Продажи (E)"):
+        df = pd.DataFrame({**base, sum_col: [500.0]})
+        parsed = parse_liquid_cost(df)
+        _assert(float(parsed.iloc[0]["buh_cost"]) == 500.0, f"sum alias {sum_col}")
+
+
 def test_liquid_margin_recalculation() -> None:
     from features.excise_liquid import CATEGORY_LIQUID_25ML
     from features.liquid_margin import parse_liquid_cost, recalculate_liquid_margins
@@ -743,6 +758,7 @@ OFFLINE_TESTS = [
     test_turnover_level4_fallback_u3,
     test_turnover_legacy_level3,
     test_parse_excise_retail_block,
+    test_parse_liquid_cost_sum_column_aliases,
     test_liquid_margin_recalculation,
     test_liquid_margin_without_excise_uses_sales,
 ]

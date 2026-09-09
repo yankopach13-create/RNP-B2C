@@ -7,6 +7,7 @@ import streamlit as st
 from typing import TYPE_CHECKING
 
 from data.loaders import AppData, load_all_data, normalize_app_data
+from features.categories import apply_category_reference
 from features.data_prep import PreparedSalesResult, filter_sales_by_report_week, prepare_sales_dataset
 from features.excise_liquid import WeekCalculationConfig
 from features.metrics import _build_turnover_summary
@@ -25,7 +26,7 @@ DF_REPORT_CACHE_VERSION_KEY = "df_report_cache_version"
 TURNOVER_TABLE_KEY = "turnover_table"
 TURNOVER_CACHE_VERSION_KEY = "turnover_cache_version"
 # Увеличивайте при изменениях расчётов — сбрасывает session_state после деплоя.
-APP_LOGIC_VERSION = "2026-09-09-liquid-margin-files"
+APP_LOGIC_VERSION = "2026-09-09-liquid-cost-column-aliases"
 APP_LOGIC_VERSION_KEY = "app_logic_version"
 LIQUID_MARGIN_CACHE_KEY = "liquid_margin_cache"
 LIQUID_MARGIN_CACHE_VERSION_KEY = "liquid_margin_cache_version"
@@ -175,6 +176,8 @@ def get_cached_excel_bytes(
     cache: dict = st.session_state.setdefault(EXCEL_CACHE_KEY, {})
     if key in cache:
         return cache[key]
+    from features.excel_export import build_rnp_b2c_excel_bytes
+
     with st.spinner("Формируем Excel…"):
         cache[key] = build_rnp_b2c_excel_bytes(data, prepared, week_config)
     return cache[key]
