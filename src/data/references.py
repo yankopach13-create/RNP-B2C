@@ -504,10 +504,13 @@ def _load_references_via_worksheets(spreadsheet) -> dict[str, pd.DataFrame]:
     loaded: dict[str, pd.DataFrame] = {}
     for key in _REFERENCE_META:
         worksheet_name = _sheet_name(key)
-        worksheet = _sheets_api_with_retry(
-            lambda name=worksheet_name: spreadsheet.worksheet(name)
-        )
-        loaded[key] = _worksheet_to_dataframe(worksheet)
+        try:
+            worksheet = _sheets_api_with_retry(
+                lambda name=worksheet_name: spreadsheet.worksheet(name)
+            )
+            loaded[key] = _worksheet_to_dataframe(worksheet)
+        except Exception:  # noqa: BLE001 — лист может отсутствовать в таблице
+            loaded[key] = pd.DataFrame()
     return loaded
 
 

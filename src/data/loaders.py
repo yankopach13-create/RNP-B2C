@@ -1,5 +1,5 @@
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Optional
 
 import pandas as pd
@@ -60,34 +60,43 @@ _APP_DATA_OPTIONAL_FIELDS = (
 
 def normalize_app_data(data: AppData | None) -> AppData | None:
     """Дополняет AppData из session_state полями, добавленными в новых версиях."""
+    from features.liquid_margin import coerce_excise_from_sales_skus
+
     if data is None:
         return None
-    if all(hasattr(data, field) for field in _APP_DATA_OPTIONAL_FIELDS):
-        return data
-    return AppData(
-        sales=data.sales,
-        groups=data.groups,
-        categories=data.categories,
-        checks_clients=data.checks_clients,
-        client_segments=data.client_segments,
-        focus=data.focus,
-        lfl=data.lfl,
-        turnover_week=data.turnover_week,
-        turnover_90=data.turnover_90,
-        focus_hookah=getattr(data, "focus_hookah", None),
-        checks_no_bk=getattr(data, "checks_no_bk", None),
-        consumables_nesting=getattr(data, "consumables_nesting", None),
-        focus_fill_free=getattr(data, "focus_fill_free", None),
-        liquid_cost=getattr(data, "liquid_cost", None),
-        excise_liquid_lfl=getattr(data, "excise_liquid_lfl", None),
-        excise_liquid_report=getattr(data, "excise_liquid_report", None),
-        excise_from_sales_skus=getattr(data, "excise_from_sales_skus", None),
-        groups_order_rnp=data.groups_order_rnp,
-        category_order_rnp=data.category_order_rnp,
-        category_order_general=data.category_order_general,
-        turnover_categories=getattr(data, "turnover_categories", None),
-        shops_order=data.shops_order,
-    )
+
+    if not isinstance(data, AppData) or not all(
+        hasattr(data, field) for field in _APP_DATA_OPTIONAL_FIELDS
+    ):
+        data = AppData(
+            sales=getattr(data, "sales", None),
+            groups=getattr(data, "groups", None),
+            categories=getattr(data, "categories", None),
+            checks_clients=getattr(data, "checks_clients", None),
+            client_segments=getattr(data, "client_segments", None),
+            focus=getattr(data, "focus", None),
+            lfl=getattr(data, "lfl", None),
+            turnover_week=getattr(data, "turnover_week", None),
+            turnover_90=getattr(data, "turnover_90", None),
+            focus_hookah=getattr(data, "focus_hookah", None),
+            checks_no_bk=getattr(data, "checks_no_bk", None),
+            consumables_nesting=getattr(data, "consumables_nesting", None),
+            focus_fill_free=getattr(data, "focus_fill_free", None),
+            liquid_cost=getattr(data, "liquid_cost", None),
+            excise_liquid_lfl=getattr(data, "excise_liquid_lfl", None),
+            excise_liquid_report=getattr(data, "excise_liquid_report", None),
+            excise_from_sales_skus=getattr(data, "excise_from_sales_skus", None),
+            groups_order_rnp=getattr(data, "groups_order_rnp", None),
+            category_order_rnp=getattr(data, "category_order_rnp", None),
+            category_order_general=getattr(data, "category_order_general", None),
+            turnover_categories=getattr(data, "turnover_categories", None),
+            shops_order=getattr(data, "shops_order", None),
+        )
+
+    coerced_skus = coerce_excise_from_sales_skus(data.excise_from_sales_skus)
+    if data.excise_from_sales_skus != coerced_skus:
+        data = replace(data, excise_from_sales_skus=coerced_skus)
+    return data
 
 def _excel_file_label(file: Any, fallback: str) -> str:
     name = getattr(file, "name", None)

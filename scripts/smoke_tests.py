@@ -154,7 +154,7 @@ def test_normalize_app_data_legacy() -> None:
   _assert(migrated.liquid_cost is None, "liquid_cost default")
   _assert(migrated.excise_liquid_lfl is None, "excise_liquid_lfl default")
   _assert(migrated.excise_liquid_report is None, "excise_liquid_report default")
-  _assert(migrated.excise_from_sales_skus is None, "excise_from_sales_skus default")
+  _assert(migrated.excise_from_sales_skus == frozenset(), "excise_from_sales_skus default")
 
 
 def test_hookah_sales_exact_match() -> None:
@@ -981,6 +981,67 @@ def test_parse_excise_from_sales_skus() -> None:
     _assert("Жидкость test 25 мл" in skus, "excise from sales strip RB")
 
 
+def test_coerce_excise_from_sales_skus() -> None:
+    from features.liquid_margin import coerce_excise_from_sales_skus
+
+    _assert(coerce_excise_from_sales_skus(None) == frozenset(), "none -> empty")
+    _assert(coerce_excise_from_sales_skus(frozenset({"A"})) == frozenset({"A"}), "frozenset passthrough")
+    _assert(coerce_excise_from_sales_skus([" A ", ""]) == frozenset({"A"}), "list coerce")
+    _assert(coerce_excise_from_sales_skus(42) == frozenset(), "int -> empty")
+    _assert(
+        coerce_excise_from_sales_skus(pd.DataFrame({"Товар ур.4": ["SKU-X"]}))
+        == frozenset({"SKU-X"}),
+        "dataframe coerce",
+    )
+
+    from features.liquid_margin import build_liquid_margin_audit, parse_liquid_cost
+    from features.excise_liquid import CATEGORY_LIQUID_25ML
+
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Shop A"],
+            "Товар ур.4": ["SKU-REF"],
+            "Неделя": [32],
+            "Категория": [CATEGORY_LIQUID_25ML],
+            "Количество": [1],
+            "Продажи с НДС": [100.0],
+            "Маржа": [10.0],
+        }
+    )
+    cost = parse_liquid_cost(
+        pd.DataFrame(
+            {
+                "Склад": ["Shop A"],
+                "Товар4": ["SKU-REF"],
+                "Год-Неделя": ["2026/32"],
+                "Продажи (Q)": [1],
+                "Продажи (Σ)": [50.0],
+            }
+        )
+    )
+    audit = build_liquid_margin_audit(
+        sales,
+        sales,
+        cost,
+        None,
+        None,
+        lfl_week=32,
+        report_week=32,
+        excise_from_sales_skus=42,
+    )
+    _assert(audit is not None, "audit with bad excise sku type")
+
+
+def test_safe_int_week() -> None:
+    from features.data_prep import safe_int_week
+
+    _assert(safe_int_week(32) == 32, "int week")
+    _assert(safe_int_week(32.0) == 32, "float week")
+    _assert(safe_int_week(None) is None, "none week")
+    _assert(safe_int_week(pd.NA) is None, "pd.NA week")
+    _assert(safe_int_week(float("nan")) is None, "nan week")
+
+
 def test_liquid_margin_ref_skips_recalculation() -> None:
     from features.excise_liquid import CATEGORY_LIQUID_25ML
     from features.liquid_margin import parse_liquid_cost, recalculate_liquid_margins
@@ -1154,6 +1215,8 @@ OFFLINE_TESTS = [
     test_normalize_sku_strips_rb_st_suffixes,
     test_liquid_margin_matches_excise_with_rb_suffix,
     test_parse_excise_from_sales_skus,
+    test_coerce_excise_from_sales_skus,
+    test_safe_int_week,
     test_liquid_margin_ref_skips_recalculation,
     test_parse_liquid_cost_sum_column_aliases,
     test_liquid_margin_recalculation,

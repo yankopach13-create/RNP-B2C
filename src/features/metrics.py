@@ -634,10 +634,11 @@ def render_liquid_margin_audit_block(
     excise_from_sales_skus=None,
 ) -> None:
     """Кнопка скачивания Excel с детализацией расчёта маржи жидкости."""
-    from features.data_prep import filter_sales_by_report_week
+    from features.data_prep import filter_sales_by_report_week, safe_int_week
     from features.liquid_margin import (
         build_liquid_margin_audit,
         build_liquid_margin_category_summary,
+        coerce_excise_from_sales_skus,
         export_liquid_margin_audit_workbook,
         liquid_margin_audit_filename,
     )
@@ -650,10 +651,50 @@ def render_liquid_margin_audit_block(
         st.caption("Загрузите файл «Себестоимость жидкости».")
         return
 
+    excise_from_sales_skus = coerce_excise_from_sales_skus(excise_from_sales_skus)
+    report_week = safe_int_week(report_week)
+    lfl_week = safe_int_week(lfl_week)
+
+    try:
+        _render_liquid_margin_audit_block_impl(
+            sales_original,
+            sales_adjusted,
+            cost_df,
+            excise_lfl,
+            excise_report,
+            lfl_week=lfl_week,
+            report_week=report_week,
+            excise_from_sales_skus=excise_from_sales_skus,
+            filter_sales_by_report_week=filter_sales_by_report_week,
+            build_liquid_margin_audit=build_liquid_margin_audit,
+            build_liquid_margin_category_summary=build_liquid_margin_category_summary,
+            export_liquid_margin_audit_workbook=export_liquid_margin_audit_workbook,
+            liquid_margin_audit_filename=liquid_margin_audit_filename,
+        )
+    except Exception as exc:  # noqa: BLE001 — не роняем весь отчёт из-за audit-блока
+        st.warning(f"Не удалось подготовить проверку себестоимости: {type(exc).__name__}")
+
+
+def _render_liquid_margin_audit_block_impl(
+    sales_original: pd.DataFrame,
+    sales_adjusted: pd.DataFrame | None,
+    cost_df,
+    excise_lfl,
+    excise_report,
+    *,
+    lfl_week: int | None,
+    report_week: int | None,
+    excise_from_sales_skus,
+    filter_sales_by_report_week,
+    build_liquid_margin_audit,
+    build_liquid_margin_category_summary,
+    export_liquid_margin_audit_workbook,
+    liquid_margin_audit_filename,
+) -> None:
     def _week_sales(df: pd.DataFrame | None, week: int | None):
         if df is None or df.empty or week is None:
             return None
-        filtered = filter_sales_by_report_week(df, int(week))
+        filtered = filter_sales_by_report_week(df, week)
         return filtered if not filtered.empty else None
 
     report_original = _week_sales(sales_original, report_week)

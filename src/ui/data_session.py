@@ -26,7 +26,7 @@ DF_REPORT_CACHE_VERSION_KEY = "df_report_cache_version"
 TURNOVER_TABLE_KEY = "turnover_table"
 TURNOVER_CACHE_VERSION_KEY = "turnover_cache_version"
 # Увеличивайте при изменениях расчётов — сбрасывает session_state после деплоя.
-APP_LOGIC_VERSION = "2026-09-09-excise-from-sales-ref"
+APP_LOGIC_VERSION = "2026-09-09-liquid-audit-fix"
 APP_LOGIC_VERSION_KEY = "app_logic_version"
 LIQUID_MARGIN_CACHE_KEY = "liquid_margin_cache"
 LIQUID_MARGIN_CACHE_VERSION_KEY = "liquid_margin_cache_version"
@@ -45,6 +45,8 @@ def ensure_app_logic_version() -> None:
         DF_REPORT_CACHE_KEY,
         DF_REPORT_CACHE_VERSION_KEY,
         DATA_VERSION_KEY,
+        LIQUID_MARGIN_CACHE_KEY,
+        LIQUID_MARGIN_CACHE_VERSION_KEY,
         "run_analysis",
         "uploaded_files",
     ):

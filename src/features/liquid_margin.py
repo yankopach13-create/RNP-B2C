@@ -214,6 +214,21 @@ def _resolve_cost_columns(columns: list[str]) -> dict[str, str]:
     return resolved
 
 
+def coerce_excise_from_sales_skus(raw) -> frozenset[str]:
+    """Безопасно приводит значение к frozenset SKU (session/cache могут вернуть другой тип)."""
+    if raw is None:
+        return frozenset()
+    if isinstance(raw, frozenset):
+        return raw
+    if isinstance(raw, set):
+        return frozenset(str(x).strip() for x in raw if str(x).strip())
+    if isinstance(raw, (list, tuple)):
+        return frozenset(str(x).strip() for x in raw if str(x).strip())
+    if isinstance(raw, pd.DataFrame):
+        return parse_excise_from_sales_skus(raw)
+    return frozenset()
+
+
 def parse_excise_from_sales_skus(raw: pd.DataFrame | None) -> frozenset[str]:
     """SKU из справочника «акциз_из_продаж» — маржа только из файла продаж."""
     if raw is None or raw.empty:
@@ -240,9 +255,10 @@ def parse_excise_from_sales_skus(raw: pd.DataFrame | None) -> frozenset[str]:
 
 
 def _sku_uses_sales_margin(sku: str, excise_from_sales_skus: frozenset[str] | None) -> bool:
-    if not excise_from_sales_skus:
+    skus = coerce_excise_from_sales_skus(excise_from_sales_skus)
+    if not skus:
         return False
-    return _normalize_sku(sku) in excise_from_sales_skus
+    return _normalize_sku(sku) in skus
 
 
 def _append_sales_margin_audit_rows(
@@ -722,10 +738,14 @@ def build_liquid_margin_audit(
     rows: list[dict[str, object]] = []
     group_keys = [COL_SKU, "_week_num"]
 
+    from features.data_prep import safe_int_week
+
     for (sku, week_val), group in liquid.groupby(group_keys, dropna=False):
         if not sku or pd.isna(week_val):
             continue
-        week = int(week_val)
+        week = safe_int_week(week_val)
+        if week is None:
+            continue
         sales_qty = float(group[COL_QTY].sum())
         if sales_qty <= 0:
             continue
@@ -857,7 +877,7 @@ def build_liquid_margin_category_summary(
     report_week: int | None,
 ) -> pd.DataFrame:
     """Сводка изменения маржи категории «Жидкость 25 мл» по неделям."""
-    from features.data_prep import filter_sales_by_report_week
+    from features.data_prep import filter_sales_by_report_week, safe_int_week
 
     columns = [
         "Период",
@@ -880,12 +900,17 @@ def build_liquid_margin_category_summary(
             return 0.0
         return float(liquid[COL_MARGIN].sum())
 
+    report_week_int = safe_int_week(report_week)
     rows: list[dict[str, float | int | str]] = []
     for period, week in (("Отчётная", report_week), ("LFL", lfl_week)):
-        if week is None:
+        week_int = safe_int_week(week)
+        if week_int is None:
             continue
-        week_int = int(week)
-        if period == "LFL" and report_week is not None and week_int == int(report_week):
+        if (
+            period == "LFL"
+            and report_week_int is not None
+            and week_int == report_week_int
+        ):
             continue
         margin_sales = _liquid_margin_sum(sales_original, week_int)
         margin_new = _liquid_margin_sum(

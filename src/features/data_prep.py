@@ -125,6 +125,21 @@ def prepare_sales_dataset(data: AppData) -> Optional[PreparedSalesResult]:
     return PreparedSalesResult(df=df, new_shops=new_shops, unmatched_products=unmatched)
 
 
+def safe_int_week(value) -> int | None:
+    """Безопасное приведение номера недели (pd.NA, float NaN, строки)."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def sales_week_numbers(df: pd.DataFrame) -> list[int]:
     """Уникальные номера недель в продажах (по возрастанию)."""
     if df is None or "Неделя" not in df.columns:
