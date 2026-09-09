@@ -61,8 +61,9 @@ _EXCISE_SUM_COL = 9
 _EXCISE_SKU_SCAN_COLS = 6
 
 _RETAIL_ANCHOR = "Розница"
+_WHOLESALE_ANCHOR = "Опт"
 _WRITEOFF_ANCHOR = "Списание за период"
-_EXCISE_ANCHORS = (_RETAIL_ANCHOR, _WRITEOFF_ANCHOR)
+_EXCISE_ANCHORS = (_RETAIL_ANCHOR, _WHOLESALE_ANCHOR, _WRITEOFF_ANCHOR)
 _EXCISE_DETAIL_RECEIPT_RE = re.compile(r"чек\s*ккм", re.IGNORECASE)
 _EXCISE_DETAIL_DOC_TYPES = frozenset({"продажа", "возврат"})
 
@@ -255,6 +256,32 @@ def _detect_excise_qty_sum_cols(row: pd.Series) -> tuple[int, int]:
     return _EXCISE_QTY_COL, _EXCISE_SUM_COL
 
 
+def _row_is_wholesale_section(row: pd.Series) -> bool:
+    """Строка-якорь секции «Опт» (не путать с «Евроопт» в названиях)."""
+    for value in row:
+        text = _normalize_text(value)
+        if text.casefold() == _WHOLESALE_ANCHOR.casefold():
+            return True
+    return False
+
+
+def _is_excise_subgroup_header(sku: str, next_row: pd.Series | None, *, qty_col: int) -> bool:
+    """
+    Промежуточная подгруппа внутри «Розница» (бренд/линейка).
+    Следующая строка — более длинное название того же SKU-дерева, не чек.
+    """
+    if not sku or next_row is None or _is_excise_detail_row(next_row):
+        return False
+    next_sku = _extract_excise_sku(next_row, before_col=qty_col)
+    if not next_sku:
+        return False
+    sku_key = _normalize_sku(sku)
+    next_key = _normalize_sku(next_sku)
+    if sku_key == next_key:
+        return False
+    return len(next_key) > len(sku_key) and next_key.startswith(sku_key)
+
+
 def _is_excise_detail_row(row: pd.Series) -> bool:
     """
     Строка детализации (чек) внутри группы SKU.
@@ -322,35 +349,48 @@ def parse_excise_retail_block(raw: pd.DataFrame) -> pd.DataFrame:
 
     retail_idx = None
     writeoff_idx = None
+    wholesale_idx = None
     for idx, row in df.iterrows():
         if retail_idx is None and _row_contains_anchor(row, _RETAIL_ANCHOR):
             retail_idx = idx
             continue
-        if retail_idx is not None and _row_contains_anchor(row, _WRITEOFF_ANCHOR):
+        if retail_idx is None:
+            continue
+        if writeoff_idx is None and _row_contains_anchor(row, _WRITEOFF_ANCHOR):
             writeoff_idx = idx
+        if wholesale_idx is None and _row_is_wholesale_section(row):
+            wholesale_idx = idx
+        if writeoff_idx is not None:
             break
 
     if retail_idx is None:
         raise ValueError(
             f'В файле акциза не найдена строка-якорь «{_RETAIL_ANCHOR}».'
         )
-    if writeoff_idx is None:
-        writeoff_idx = len(df)
+    end_idx = writeoff_idx if writeoff_idx is not None else len(df)
+    if wholesale_idx is not None:
+        end_idx = min(end_idx, wholesale_idx)
 
     anchor_row = df.iloc[retail_idx]
     qty_col, sum_col = _detect_excise_qty_sum_cols(anchor_row)
-    block = df.iloc[retail_idx + 1 : writeoff_idx].copy()
+    block = df.iloc[retail_idx + 1 : end_idx].copy()
 
     rows: list[dict[str, float | str]] = []
     last_sku = ""
-    for _, row in block.iterrows():
+    block_items = list(block.iterrows())
+    for i, (_, row) in enumerate(block_items):
         if _is_excise_detail_row(row):
             continue
+
         sku = _extract_excise_sku(row, before_col=qty_col)
         if sku:
             last_sku = sku
         elif last_sku:
             sku = last_sku
+
+        next_row = block_items[i + 1][1] if i + 1 < len(block_items) else None
+        if _is_excise_subgroup_header(sku, next_row, qty_col=qty_col):
+            continue
 
         qty = _coerce_number(row.iloc[qty_col] if len(row) > qty_col else None)
         excise_sum = _coerce_number(row.iloc[sum_col] if len(row) > sum_col else None)

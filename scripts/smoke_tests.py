@@ -705,6 +705,55 @@ def test_parse_excise_retail_block_skips_grouped_detail_rows() -> None:
     _assert(abs(float(parsed["excise_sum"].sum()) - 51.0) < 0.01, "grouped: total sum without duplicate")
 
 
+def test_parse_excise_retail_block_skips_subgroup_headers() -> None:
+    from features.liquid_margin import parse_excise_retail_block
+
+    group = "Жидкость fill BAY"
+    sku = "Жидкость fill BAY - Neon ( Энергетик ) 25 мл ( 15 ± 3 мг ) РБ"
+    raw = pd.DataFrame(
+        [
+            ["", "Розница", "", "", "", "", "", "", 44, 1122.0],
+            ["", group, "", "", "", "", "", "", 44, 1122.0],
+            ["", sku, "", "", "", "", "", "", 44, 1122.0],
+            [
+                "",
+                sku,
+                "Чек ККМ 06573820 от 05.09.2026",
+                25,
+                "1,0200",
+                "Продажа",
+                "",
+                "",
+                44,
+                1122.0,
+            ],
+            ["", "Списание за период", "", "", "", "", "", "", "", ""],
+        ]
+    )
+    parsed = parse_excise_retail_block(raw)
+    _assert(len(parsed) == 1, "subgroup: one sku")
+    _assert(float(parsed.iloc[0]["qty"]) == 44, "subgroup: qty not doubled")
+    _assert(float(parsed.iloc[0]["excise_sum"]) == 1122.0, "subgroup: sum not doubled")
+
+
+def test_parse_excise_retail_block_stops_at_wholesale_section() -> None:
+    from features.liquid_margin import parse_excise_retail_block
+
+    raw = pd.DataFrame(
+        [
+            ["", "Розница", "", "", "", "", "", "", 10, 255.0],
+            ["", "SKU-RETAIL", "", "", "", "", "", "", 10, 255.0],
+            ["", "Опт", "", "", "", "", "", "", 99, 9999.0],
+            ["", "SKU-WHOLESALE", "", "", "", "", "", "", 99, 9999.0],
+            ["", "Списание за период", "", "", "", "", "", "", "", ""],
+        ]
+    )
+    parsed = parse_excise_retail_block(raw)
+    _assert(len(parsed) == 1, "wholesale: one retail sku")
+    _assert(parsed.iloc[0]["sku"] == "SKU-RETAIL", "wholesale: retail sku only")
+    _assert(float(parsed.iloc[0]["qty"]) == 10, "wholesale: retail qty only")
+
+
 def test_parse_excise_retail_block_forward_fill_sku() -> None:
     from features.liquid_margin import parse_excise_retail_block
 
@@ -999,6 +1048,8 @@ OFFLINE_TESTS = [
     test_parse_excise_retail_block_merged_sku_column,
     test_parse_excise_retail_block_forward_fill_sku,
     test_parse_excise_retail_block_skips_grouped_detail_rows,
+    test_parse_excise_retail_block_skips_subgroup_headers,
+    test_parse_excise_retail_block_stops_at_wholesale_section,
     test_normalize_sku_strips_rb_st_suffixes,
     test_liquid_margin_matches_excise_with_rb_suffix,
     test_parse_liquid_cost_sum_column_aliases,
