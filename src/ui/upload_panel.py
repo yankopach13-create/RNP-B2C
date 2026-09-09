@@ -50,7 +50,6 @@ def render_upload_panel() -> UploadedFiles:
                 type=_XLSX_TYPES,
                 key="sales_uploader",
             )
-            st.markdown('<p class="upload-mini-title">Себестоимость жидкости</p>', unsafe_allow_html=True)
             liquid_cost_file = st.file_uploader(
                 "Себестоимость жидкости",
                 type=_XLSX_TYPES,
@@ -145,7 +144,7 @@ def render_upload_panel() -> UploadedFiles:
 
         with col_focus:
             render_section_header_with_help(
-                title="Категории в фокусе",
+                title="Вложенность",
                 image_name="hookah.png",
                 caption=(
                     "Зайдите в Qlik под профилем User2.<br>"
@@ -258,12 +257,6 @@ def _inject_upload_page_styles() -> None:
     st.markdown(
         """
         <style>
-        .upload-mini-title {
-            font-size: 0.92rem;
-            font-weight: 600;
-            color: rgba(250, 250, 250, 0.9);
-            margin: 0.35rem 0 0.15rem;
-        }
         .st-key-load_data_btn button {
             background-color: #b23a3a !important;
             border: 1px solid #b23a3a !important;
