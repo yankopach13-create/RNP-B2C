@@ -66,6 +66,10 @@ _WRITEOFF_ANCHOR = "Списание за период"
 _EXCISE_ANCHORS = (_RETAIL_ANCHOR, _WHOLESALE_ANCHOR, _WRITEOFF_ANCHOR)
 _EXCISE_DETAIL_RECEIPT_RE = re.compile(r"чек\s*ккм", re.IGNORECASE)
 _EXCISE_DETAIL_DOC_TYPES = frozenset({"продажа", "возврат"})
+_EXCISE_WHOLESALE_RE = re.compile(r"^(?:акциз\s*)?опт(?:овая)?\.?$", re.IGNORECASE)
+_LIQUID_SKU_MARKERS = ("25 мл", "25мл")
+_EXCISE_ANCHOR_QTY_ATTR = "excise_anchor_qty"
+_EXCISE_ANCHOR_SUM_ATTR = "excise_anchor_sum"
 
 AUDIT_DETAIL_COLUMNS = [
     "Товар ур.4",
@@ -260,9 +264,68 @@ def _row_is_wholesale_section(row: pd.Series) -> bool:
     """Строка-якорь секции «Опт» (не путать с «Евроопт» в названиях)."""
     for value in row:
         text = _normalize_text(value)
-        if text.casefold() == _WHOLESALE_ANCHOR.casefold():
+        if _EXCISE_WHOLESALE_RE.match(text):
             return True
     return False
+
+
+def _is_retail_liquid_sku(sku: str) -> bool:
+    """Конкретный SKU жидкости 25 мл (без промежуточных групп бренда)."""
+    folded = _normalize_sku(sku).casefold()
+    return any(marker in folded for marker in _LIQUID_SKU_MARKERS)
+
+
+def _row_is_retail_block_boundary(row: pd.Series, *, qty_col: int, sum_col: int) -> bool:
+    """Конец блока «Розница»: «Списание за период» или секция «Опт»."""
+    if _row_contains_anchor(row, _WRITEOFF_ANCHOR):
+        return True
+    if _row_is_wholesale_section(row):
+        return True
+    return False
+
+
+def _find_retail_block_end(
+    df: pd.DataFrame,
+    retail_idx: int,
+    *,
+    qty_col: int,
+    sum_col: int,
+) -> int:
+    """Индекс строки после последней строки розницы (exclusive end)."""
+    for idx in range(retail_idx + 1, len(df)):
+        if _row_is_retail_block_boundary(df.iloc[idx], qty_col=qty_col, sum_col=sum_col):
+            return idx
+    return len(df)
+
+
+def _refine_excise_rows_to_anchor(
+    rows: list[dict[str, float | str]],
+    *,
+    anchor_qty: float | None,
+    anchor_sum: float | None,
+) -> list[dict[str, float | str]]:
+    """Если итог завышен (подгруппы), оставляем только строки SKU с «25 мл»."""
+    if not rows or anchor_qty is None:
+        return rows
+
+    total_qty = sum(float(row["qty"]) for row in rows)
+    if total_qty <= anchor_qty * 1.005:
+        return rows
+
+    liquid_rows = [row for row in rows if _is_retail_liquid_sku(str(row["sku"]))]
+    if not liquid_rows:
+        return rows
+
+    liquid_qty = sum(float(row["qty"]) for row in liquid_rows)
+    if liquid_qty <= anchor_qty * 1.005:
+        return liquid_rows
+
+    if anchor_sum is not None:
+        liquid_sum = sum(float(row["excise_sum"]) for row in liquid_rows)
+        if liquid_sum <= anchor_sum * 1.005:
+            return liquid_rows
+
+    return liquid_rows
 
 
 def _is_excise_subgroup_header(sku: str, next_row: pd.Series | None, *, qty_col: int) -> bool:
@@ -331,8 +394,20 @@ def format_excise_parse_status(df: pd.DataFrame | None, label: str) -> str | Non
         )
     qty_total = float(df["qty"].sum())
     sum_total = float(df["excise_sum"].sum())
-    return f"✓ {label}: {sku_count} SKU, {qty_total:.0f} шт., сумма акциза {sum_total:,.2f}".replace(
-        ",", " "
+    anchor_qty = df.attrs.get(_EXCISE_ANCHOR_QTY_ATTR)
+    anchor_sum = df.attrs.get(_EXCISE_ANCHOR_SUM_ATTR)
+    mismatch = ""
+    if anchor_qty is not None and qty_total > float(anchor_qty) * 1.01:
+        mismatch = (
+            f" (ожидалось по строке «Розница»: {float(anchor_qty):.0f} шт., "
+            f"{float(anchor_sum):,.2f} сумма)".replace(",", " ")
+            if anchor_sum is not None
+            else f" (ожидалось по строке «Розница»: {float(anchor_qty):.0f} шт.)"
+        )
+    prefix = "⚠" if mismatch else "✓"
+    return (
+        f"{prefix} {label}: {sku_count} SKU, {qty_total:.0f} шт., "
+        f"сумма акциза {sum_total:,.2f}{mismatch}".replace(",", " ")
     )
 
 
@@ -348,31 +423,26 @@ def parse_excise_retail_block(raw: pd.DataFrame) -> pd.DataFrame:
     df = df.reset_index(drop=True)
 
     retail_idx = None
-    writeoff_idx = None
-    wholesale_idx = None
     for idx, row in df.iterrows():
-        if retail_idx is None and _row_contains_anchor(row, _RETAIL_ANCHOR):
+        if _row_contains_anchor(row, _RETAIL_ANCHOR):
             retail_idx = idx
-            continue
-        if retail_idx is None:
-            continue
-        if writeoff_idx is None and _row_contains_anchor(row, _WRITEOFF_ANCHOR):
-            writeoff_idx = idx
-        if wholesale_idx is None and _row_is_wholesale_section(row):
-            wholesale_idx = idx
-        if writeoff_idx is not None:
             break
 
     if retail_idx is None:
         raise ValueError(
             f'В файле акциза не найдена строка-якорь «{_RETAIL_ANCHOR}».'
         )
-    end_idx = writeoff_idx if writeoff_idx is not None else len(df)
-    if wholesale_idx is not None:
-        end_idx = min(end_idx, wholesale_idx)
 
     anchor_row = df.iloc[retail_idx]
     qty_col, sum_col = _detect_excise_qty_sum_cols(anchor_row)
+    anchor_qty = _coerce_number(anchor_row.iloc[qty_col] if len(anchor_row) > qty_col else None)
+    anchor_sum = _coerce_number(anchor_row.iloc[sum_col] if len(anchor_row) > sum_col else None)
+    end_idx = _find_retail_block_end(
+        df,
+        retail_idx,
+        qty_col=qty_col,
+        sum_col=sum_col,
+    )
     block = df.iloc[retail_idx + 1 : end_idx].copy()
 
     rows: list[dict[str, float | str]] = []
@@ -400,15 +470,26 @@ def parse_excise_retail_block(raw: pd.DataFrame) -> pd.DataFrame:
             continue
         rows.append({"sku": _normalize_sku(sku), "qty": qty, "excise_sum": excise_sum})
 
+    rows = _refine_excise_rows_to_anchor(
+        rows,
+        anchor_qty=anchor_qty,
+        anchor_sum=anchor_sum,
+    )
+
     if not rows:
         return pd.DataFrame(columns=["sku", "qty", "excise_sum"])
 
     parsed = pd.DataFrame(rows)
-    return (
+    parsed = (
         parsed.groupby("sku", as_index=False)
         .agg({"qty": "sum", "excise_sum": "sum"})
         .reset_index(drop=True)
     )
+    if anchor_qty is not None:
+        parsed.attrs[_EXCISE_ANCHOR_QTY_ATTR] = anchor_qty
+    if anchor_sum is not None:
+        parsed.attrs[_EXCISE_ANCHOR_SUM_ATTR] = anchor_sum
+    return parsed
 
 
 def _excise_for_week(
