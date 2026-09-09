@@ -32,10 +32,9 @@ from features.metrics import (
     render_shop_economy_dataframe,
     _build_shop_economy_table,
     _can_build_financial_metrics,
-    _fmt_fin_int,
     _full_table_height,
 )
-from features.excise_liquid import WeekCalculationConfig, excise_margin_deduction
+from features.excise_liquid import WeekCalculationConfig
 from features.excel_export import rnp_b2c_excel_filename
 from features.ai_report import render_ai_report_b2c
 from features.general_rnp import render_general_rnp_b2c
@@ -45,6 +44,8 @@ from ui.data_session import (
     get_cached_excel_bytes,
     get_cached_turnover_table,
     get_df_report_cached,
+    get_lfl_with_liquid_margins,
+    get_prepared_with_liquid_margins,
     get_stored_app_data,
     get_stored_prepared,
     ensure_app_logic_version,
@@ -216,15 +217,14 @@ def _render_rnp_b2c_header(
 
     if st.session_state.show_general_rnp_b2c_block:
         report_week = week_config.report_week if week_config else None
-        excise_report = week_config.excise_liquid_report if week_config else 0.0
-        sales_df = prepared.df if prepared is not None else data.sales
+        prepared_adj = get_prepared_with_liquid_margins(prepared, data, week_config)
+        sales_df = prepared_adj.df if prepared_adj is not None else data.sales
         render_general_rnp_b2c(
             sales_df,
             data.checks_clients,
             client_segments_df=data.client_segments,
             report_week=report_week,
             category_order_general=data.category_order_general,
-            excise_liquid_report_qty=excise_report,
         )
 
     st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
@@ -248,14 +248,13 @@ def _render_rnp_b2c_header(
 
     if st.session_state.show_ai_rnp_b2c_block:
         report_week = week_config.report_week if week_config else None
-        excise_report = week_config.excise_liquid_report if week_config else 0.0
-        sales_df = prepared.df if prepared is not None else data.sales
+        prepared_adj = get_prepared_with_liquid_margins(prepared, data, week_config)
+        sales_df = prepared_adj.df if prepared_adj is not None else data.sales
         render_ai_report_b2c(
             sales_df,
             data.checks_clients,
             client_segments_df=data.client_segments,
             report_week=report_week,
-            excise_liquid_report_qty=excise_report,
         )
 
 
@@ -366,7 +365,8 @@ def _render_rnp_b2c_results(
     if week_config is not None:
         st.divider()
 
-    df = prepared.df if prepared is not None else None
+    prepared_adj = get_prepared_with_liquid_margins(prepared, data, week_config)
+    df = prepared_adj.df if prepared_adj is not None else None
 
     df_report = _filter_report_sales(df, week_config) if df is not None else None
     if df is not None and df_report is None:
@@ -379,8 +379,6 @@ def _render_rnp_b2c_results(
 
     report_week = week_config.report_week if week_config else None
     lfl_week = week_config.lfl_week if week_config else None
-    excise_report = week_config.excise_liquid_report if week_config else 0.0
-    excise_lfl = week_config.excise_liquid_lfl if week_config else 0.0
 
     if df_report is not None:
         render_global_metrics(
@@ -396,7 +394,6 @@ def _render_rnp_b2c_results(
             shops_order=data.shops_order,
             checks_clients_df=data.checks_clients,
             report_week=report_week,
-            excise_liquid_report_qty=excise_report,
             turnover_table=get_cached_turnover_table(data),
         )
         _render_shop_economy_and_lfl(
@@ -404,8 +401,7 @@ def _render_rnp_b2c_results(
             df_report,
             lfl_week,
             report_week,
-            excise_lfl_qty=excise_lfl,
-            excise_report_qty=excise_report,
+            week_config=week_config,
         )
     elif data.sales is not None:
         sales_report = _filter_report_sales(data.sales, week_config)
@@ -418,7 +414,6 @@ def _render_rnp_b2c_results(
                 sales_report,
                 data.client_segments,
                 report_week=report_week,
-                excise_liquid_report_qty=excise_report,
             )
 
         if data.checks_clients is not None:
@@ -433,15 +428,14 @@ def _render_rnp_b2c_results(
             sales_report,
             lfl_week,
             report_week,
-            excise_lfl_qty=excise_lfl,
-            excise_report_qty=excise_report,
+            week_config=week_config,
         )
     else:
         _render_hookah_and_checks_no_bk(data, None, report_week)
 
 
 def _inject_week_selector_input_styles() -> None:
-    """Одинаковый размер ячеек недель и акцизной жидкости."""
+    """Одинаковый размер ячеек выбора недель."""
     _input_w = "6.75rem"
     st.markdown(
         f"""
@@ -453,25 +447,14 @@ def _inject_week_selector_input_styles() -> None:
             min-width: {_input_w} !important;
             flex: 0 0 {_input_w} !important;
         }}
-        div[class*="st-key-excise_liquid_lfl"] div[data-testid="stNumberInput"],
-        div[class*="st-key-excise_liquid_report"] div[data-testid="stNumberInput"] {{
-            width: {_input_w} !important;
-            max-width: {_input_w} !important;
-            min-width: {_input_w} !important;
-            flex: 0 0 {_input_w} !important;
-        }}
         div[class*="st-key-week_lfl"] div[data-baseweb="select"] > div,
-        div[class*="st-key-week_report"] div[data-baseweb="select"] > div,
-        div[class*="st-key-excise_liquid_lfl"] input,
-        div[class*="st-key-excise_liquid_report"] input {{
+        div[class*="st-key-week_report"] div[data-baseweb="select"] > div {{
             min-height: 46px !important;
             font-size: 1.15rem !important;
             width: 100% !important;
         }}
         div[class*="st-key-week_lfl"] div[data-baseweb="select"] span,
-        div[class*="st-key-week_report"] div[data-baseweb="select"] span,
-        div[class*="st-key-excise_liquid_lfl"] input,
-        div[class*="st-key-excise_liquid_report"] input {{
+        div[class*="st-key-week_report"] div[data-baseweb="select"] span {{
             font-size: 1.15rem !important;
         }}
         </style>
@@ -494,74 +477,34 @@ def _render_week_selectors(sales_df: pd.DataFrame) -> WeekCalculationConfig | No
     _SECTION_TITLE_HTML = (
         '<h2 style="color: #1f77b4; margin: 0; padding-top: 0.35rem;">{text}</h2>'
     )
-    # Те же доли колонок, что у «РНП B2C» / «Скачать РНП» — акциз по левому краю кнопки Excel.
-    col_weeks, col_excise = st.columns([1.35, 1], gap="small")
+    st.markdown(
+        _SECTION_TITLE_HTML.format(text="Настройка недель для расчёта"),
+        unsafe_allow_html=True,
+    )
     select_kwargs = {"label_visibility": "collapsed"}
-    number_kwargs = {
-        "min_value": 0.0,
-        "step": 1.0,
-        "format": "%.0f",
-        "label_visibility": "collapsed",
-    }
     _week_pair_cols = [0.42, 0.42, 2.16]
-    _excise_pair_cols = [0.42, 0.14, 0.42, 2.02]
-
-    with col_weeks:
-        st.markdown(
-            _SECTION_TITLE_HTML.format(text="Настройка недель для расчёта"),
-            unsafe_allow_html=True,
+    col_lfl, col_report, _sp_w = st.columns(_week_pair_cols, gap="small")
+    with col_lfl:
+        st.caption("LFL")
+        lfl_week = st.selectbox(
+            "LFL",
+            weeks,
+            index=weeks.index(lfl_default),
+            key="week_lfl",
+            **select_kwargs,
         )
-        col_lfl, col_report, _sp_w = st.columns(_week_pair_cols, gap="small")
-        with col_lfl:
-            st.caption("LFL")
-            lfl_week = st.selectbox(
-                "LFL",
-                weeks,
-                index=weeks.index(lfl_default),
-                key="week_lfl",
-                **select_kwargs,
-            )
-        with col_report:
-            st.caption("Отчётная")
-            report_week = st.selectbox(
-                "Отчётная",
-                weeks,
-                index=weeks.index(report_default),
-                key="week_report",
-                **select_kwargs,
-            )
-
-    with col_excise:
-        st.markdown(
-            _SECTION_TITLE_HTML.format(text="Акцизной жидкости в шт."),
-            unsafe_allow_html=True,
+    with col_report:
+        st.caption("Отчётная")
+        report_week = st.selectbox(
+            "Отчётная",
+            weeks,
+            index=weeks.index(report_default),
+            key="week_report",
+            **select_kwargs,
         )
-        col_exc_lfl, _exc_gap, col_exc_report, _sp_e = st.columns(
-            _excise_pair_cols, gap="small"
-        )
-        with _exc_gap:
-            st.empty()
-        with col_exc_lfl:
-            st.caption("LFL")
-            excise_lfl = st.number_input(
-                "Акциз LFL", key="excise_liquid_lfl", **number_kwargs
-            )
-            st.caption(
-                f"Вычтено из МД: {_fmt_fin_int(excise_margin_deduction(excise_lfl))}"
-            )
-        with col_exc_report:
-            st.caption("Отчётная")
-            excise_report = st.number_input(
-                "Акциз отчётная", key="excise_liquid_report", **number_kwargs
-            )
-            st.caption(
-                f"Вычтено из МД: {_fmt_fin_int(excise_margin_deduction(excise_report))}"
-            )
     return WeekCalculationConfig(
         lfl_week=int(lfl_week),
         report_week=int(report_week),
-        excise_liquid_lfl=float(excise_lfl),
-        excise_liquid_report=float(excise_report),
     )
 
 
@@ -630,8 +573,7 @@ def _render_shop_economy_and_lfl(
     lfl_week: int | None,
     report_week: int | None,
     *,
-    excise_lfl_qty: float = 0.0,
-    excise_report_qty: float = 0.0,
+    week_config: WeekCalculationConfig | None = None,
 ) -> None:
     """План-факт магазины, факторный анализ, кальян, вложенность расходников и % без БК."""
     has_shop = sales_df is not None and not sales_df.empty
@@ -644,15 +586,14 @@ def _render_shop_economy_and_lfl(
     col_left, col_lfl = st.columns([1.28, 1.82])
 
     lfl_table = None
+    lfl_df = get_lfl_with_liquid_margins(data, week_config)
     if has_lfl:
         lfl_table = build_lfl_factor_table(
-            data.lfl,
+            lfl_df,
             data.categories,
             lfl_week,
             report_week,
             data.category_order_rnp,
-            excise_liquid_lfl_qty=excise_lfl_qty,
-            excise_liquid_report_qty=excise_report_qty,
         )
     paired_table_height = (
         _full_table_height(len(lfl_table))
@@ -686,13 +627,11 @@ def _render_shop_economy_and_lfl(
     with col_lfl:
         if has_lfl:
             render_lfl_block(
-                data.lfl,
+                lfl_df,
                 data.categories,
                 lfl_week,
                 report_week,
                 data.category_order_rnp,
-                excise_liquid_lfl_qty=excise_lfl_qty,
-                excise_liquid_report_qty=excise_report_qty,
                 embedded=True,
                 prebuilt_table=lfl_table,
                 table_height=paired_table_height,

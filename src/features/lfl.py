@@ -2,10 +2,6 @@ import pandas as pd
 import streamlit as st
 
 from features.categories import apply_category_reference
-from features.excise_liquid import (
-    CATEGORY_LIQUID_25ML,
-    excise_margin_deduction,
-)
 from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     _full_table_height,
@@ -40,8 +36,6 @@ def render_lfl_block(
     report_week: int | None = None,
     category_order_rnp: list[str] | None = None,
     *,
-    excise_liquid_lfl_qty: float = 0.0,
-    excise_liquid_report_qty: float = 0.0,
     embedded: bool = False,
     prebuilt_table: pd.DataFrame | None = None,
     table_height: int | None = None,
@@ -60,8 +54,6 @@ def render_lfl_block(
             lfl_week,
             report_week,
             category_order_rnp,
-            excise_liquid_lfl_qty=excise_liquid_lfl_qty,
-            excise_liquid_report_qty=excise_liquid_report_qty,
         )
     if table is None:
         if lfl_df is None:
@@ -94,9 +86,6 @@ def build_lfl_factor_table(
     lfl_week: int | None = None,
     report_week: int | None = None,
     category_order_rnp: list[str] | None = None,
-    *,
-    excise_liquid_lfl_qty: float = 0.0,
-    excise_liquid_report_qty: float = 0.0,
 ) -> pd.DataFrame | None:
     """Таблица факторного анализа для UI и Excel."""
     if lfl_df is None or categories_df is None:
@@ -174,16 +163,7 @@ def build_lfl_factor_table(
                 subset = agg[
                     (agg["Категория"] == category) & (agg["Неделя"] == week)
                 ]
-                value = _margin_with_excise_liquid(
-                    aggregator(subset),
-                    category=category,
-                    metric_name=metric_name,
-                    week=week,
-                    lfl_week=lfl_week,
-                    report_week=report_week,
-                    excise_liquid_lfl_qty=excise_liquid_lfl_qty,
-                    excise_liquid_report_qty=excise_liquid_report_qty,
-                )
+                value = aggregator(subset)
                 row[f"{week} {metric_name}"] = formatter(value)
         table_rows.append(row)
 
@@ -192,27 +172,6 @@ def build_lfl_factor_table(
         columns.extend([f"{week} {metric_name}" for week in weeks])
 
     return pd.DataFrame(table_rows, columns=columns)
-
-
-def _margin_with_excise_liquid(
-    value: float,
-    *,
-    category: str,
-    metric_name: str,
-    week: int,
-    lfl_week: int | None,
-    report_week: int | None,
-    excise_liquid_lfl_qty: float,
-    excise_liquid_report_qty: float,
-) -> float:
-    """Маржа «Жидкость 25 мл»: вычет × 4,25 по неделе LFL и отчётной."""
-    if category != CATEGORY_LIQUID_25ML or metric_name != "Маржа":
-        return float(value)
-    if lfl_week is not None and week == int(lfl_week):
-        return float(value) - excise_margin_deduction(excise_liquid_lfl_qty)
-    if report_week is not None and week == int(report_week):
-        return float(value) - excise_margin_deduction(excise_liquid_report_qty)
-    return float(value)
 
 
 def _fmt_money(value):

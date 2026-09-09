@@ -5,9 +5,11 @@ from __future__ import annotations
 import streamlit as st
 
 from data.loaders import AppData, load_all_data, normalize_app_data
+from features.categories import apply_category_reference
 from features.data_prep import PreparedSalesResult, filter_sales_by_report_week, prepare_sales_dataset
 from features.excise_liquid import WeekCalculationConfig
 from features.excel_export import build_rnp_b2c_excel_bytes
+from features.liquid_margin import recalculate_liquid_margins
 from features.metrics import _build_turnover_summary
 from ui.upload_panel import UploadedFiles
 
@@ -22,8 +24,10 @@ DF_REPORT_CACHE_VERSION_KEY = "df_report_cache_version"
 TURNOVER_TABLE_KEY = "turnover_table"
 TURNOVER_CACHE_VERSION_KEY = "turnover_cache_version"
 # Увеличивайте при изменениях расчётов — сбрасывает session_state после деплоя.
-APP_LOGIC_VERSION = "2026-09-03-consumables-nesting-uploader"
+APP_LOGIC_VERSION = "2026-09-09-liquid-margin-files"
 APP_LOGIC_VERSION_KEY = "app_logic_version"
+LIQUID_MARGIN_CACHE_KEY = "liquid_margin_cache"
+LIQUID_MARGIN_CACHE_VERSION_KEY = "liquid_margin_cache_version"
 
 
 def ensure_app_logic_version() -> None:
@@ -58,6 +62,8 @@ def _clear_derived_caches() -> None:
     st.session_state[DF_REPORT_CACHE_KEY] = {}
     st.session_state.pop(TURNOVER_TABLE_KEY, None)
     st.session_state.pop(TURNOVER_CACHE_VERSION_KEY, None)
+    st.session_state.pop(LIQUID_MARGIN_CACHE_KEY, None)
+    st.session_state.pop(LIQUID_MARGIN_CACHE_VERSION_KEY, None)
 
 
 def load_and_store_app_data(files: UploadedFiles) -> tuple[AppData, PreparedSalesResult | None]:
@@ -97,14 +103,62 @@ def excel_cache_key(
     data_version: int,
 ) -> tuple:
     if week_config is None:
-        return (data_version, None, None, 0.0, 0.0)
+        return (data_version, None, None)
     return (
         data_version,
         week_config.lfl_week,
         week_config.report_week,
-        week_config.excise_liquid_lfl,
-        week_config.excise_liquid_report,
     )
+
+
+def _liquid_margin_cache_key(
+    source_key: str,
+    week_config: WeekCalculationConfig | None,
+    data_version: int,
+) -> tuple:
+    if week_config is None:
+        return (data_version, source_key, None, None)
+    return (
+        data_version,
+        source_key,
+        week_config.lfl_week,
+        week_config.report_week,
+    )
+
+
+def apply_liquid_margins(
+    sales_df,
+    data: AppData,
+    week_config: WeekCalculationConfig | None,
+    *,
+    source_key: str = "prepared",
+):
+    """Пересчёт маржи «Жидкость 25 мл» с кэшем по неделям и версии данных."""
+    if sales_df is None:
+        return None
+    if week_config is None or data.liquid_cost is None:
+        return sales_df
+
+    version = int(st.session_state.get(DATA_VERSION_KEY, 0))
+    if st.session_state.get(LIQUID_MARGIN_CACHE_VERSION_KEY) != version:
+        st.session_state[LIQUID_MARGIN_CACHE_KEY] = {}
+        st.session_state[LIQUID_MARGIN_CACHE_VERSION_KEY] = version
+
+    cache_key = _liquid_margin_cache_key(source_key, week_config, version)
+    cache: dict = st.session_state.setdefault(LIQUID_MARGIN_CACHE_KEY, {})
+    if cache_key in cache:
+        return cache[cache_key]
+
+    adjusted = recalculate_liquid_margins(
+        sales_df,
+        data.liquid_cost,
+        data.excise_liquid_lfl,
+        data.excise_liquid_report,
+        lfl_week=week_config.lfl_week,
+        report_week=week_config.report_week,
+    )
+    cache[cache_key] = adjusted
+    return adjusted
 
 
 def get_cached_excel_bytes(
@@ -146,6 +200,45 @@ def get_df_report_cached(
     filtered = filter_sales_by_report_week(df, report_week)
     cache[report_week] = filtered
     return filtered
+
+
+def get_prepared_with_liquid_margins(
+    prepared: PreparedSalesResult | None,
+    data: AppData,
+    week_config: WeekCalculationConfig | None,
+) -> PreparedSalesResult | None:
+    if prepared is None:
+        return None
+    adjusted_df = apply_liquid_margins(
+        prepared.df,
+        data,
+        week_config,
+        source_key="prepared",
+    )
+    if adjusted_df is prepared.df:
+        return prepared
+    return PreparedSalesResult(
+        df=adjusted_df,
+        new_shops=prepared.new_shops,
+        unmatched_products=prepared.unmatched_products,
+    )
+
+
+def get_lfl_with_liquid_margins(
+    data: AppData,
+    week_config: WeekCalculationConfig | None,
+):
+    if data.lfl is None:
+        return None
+    lfl_df = data.lfl.copy()
+    if data.categories is not None:
+        lfl_df = apply_category_reference(lfl_df, data.categories)
+    return apply_liquid_margins(
+        lfl_df,
+        data,
+        week_config,
+        source_key="lfl",
+    )
 
 
 def get_cached_turnover_table(data: AppData):

@@ -151,6 +151,9 @@ def test_normalize_app_data_legacy() -> None:
   _assert(migrated.checks_no_bk is None, "checks_no_bk default")
   _assert(migrated.consumables_nesting is None, "consumables_nesting default")
   _assert(migrated.focus_fill_free is None, "focus_fill_free default")
+  _assert(migrated.liquid_cost is None, "liquid_cost default")
+  _assert(migrated.excise_liquid_lfl is None, "excise_liquid_lfl default")
+  _assert(migrated.excise_liquid_report is None, "excise_liquid_report default")
 
 
 def test_hookah_sales_exact_match() -> None:
@@ -233,18 +236,16 @@ def test_excel_export_hookah_sheet() -> None:
         checks_no_bk=None,
         consumables_nesting=None,
         focus_fill_free=None,
+        liquid_cost=None,
+        excise_liquid_lfl=None,
+        excise_liquid_report=None,
         groups_order_rnp=None,
         category_order_rnp=None,
         category_order_general=None,
         turnover_categories=None,
         shops_order=None,
     )
-    week_config = WeekCalculationConfig(
-        lfl_week=9,
-        report_week=10,
-        excise_liquid_lfl=0.0,
-        excise_liquid_report=0.0,
-    )
+    week_config = WeekCalculationConfig(lfl_week=9, report_week=10)
     sheets = collect_rnp_b2c_sheets(data, None, week_config)
     names = [spec.name for spec in sheets]
     _assert("Кальянная продукция" in names, "hookah sheet")
@@ -531,6 +532,9 @@ def test_excel_export_consumables_sheet() -> None:
         checks_no_bk=None,
         consumables_nesting=upload,
         focus_fill_free=None,
+        liquid_cost=None,
+        excise_liquid_lfl=None,
+        excise_liquid_report=None,
         groups_order_rnp=None,
         category_order_rnp=None,
         category_order_general=None,
@@ -543,12 +547,7 @@ def test_excel_export_consumables_sheet() -> None:
         sheets = collect_rnp_b2c_sheets(
             data,
             None,
-            WeekCalculationConfig(
-                lfl_week=9,
-                report_week=10,
-                excise_liquid_lfl=0.0,
-                excise_liquid_report=0.0,
-            ),
+            WeekCalculationConfig(lfl_week=9, report_week=10),
         )
     finally:
         excel_export.load_pct_no_bk_reference = original
@@ -623,6 +622,103 @@ def test_turnover_legacy_level3() -> None:
     _assert(table.iloc[0]["Оборачиваемость, дни"] == "20", "stock/daily")
 
 
+def test_parse_excise_retail_block() -> None:
+    from features.liquid_margin import parse_excise_retail_block
+
+    raw = pd.DataFrame(
+        [
+            [""] * 10,
+            [""] * 10,
+            ["", "Розница", "", "", "", "", "", "", 10123, 258136.5],
+            ["", "SKU-1", "", "", "", "", "", "", 44, 1122],
+            ["", "Списание за период", "", "", "", "", "", "", "", ""],
+        ]
+    )
+    parsed = parse_excise_retail_block(raw)
+    _assert(len(parsed) == 1, "one excise sku")
+    _assert(parsed.iloc[0]["sku"] == "SKU-1", "excise sku")
+    _assert(parsed.iloc[0]["qty"] == 44, "excise qty")
+    _assert(parsed.iloc[0]["excise_sum"] == 1122, "excise sum")
+
+
+def test_liquid_margin_recalculation() -> None:
+    from features.excise_liquid import CATEGORY_LIQUID_25ML
+    from features.liquid_margin import parse_liquid_cost, recalculate_liquid_margins
+
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Shop A"],
+            "Товар ур.4": ["SKU-1"],
+            "Неделя": [32],
+            "Категория": [CATEGORY_LIQUID_25ML],
+            "Количество": [120],
+            "Продажи с НДС": [24000.0],
+            "Маржа": [4800.0],
+        }
+    )
+    cost = parse_liquid_cost(
+        pd.DataFrame(
+            {
+                "Склад": ["Shop A"],
+                "Товар4": ["SKU-1"],
+                "Год-Неделя": ["2026/32"],
+                "Продажи (Q)": [120],
+                "Продажи (Σ)": [12000.0],
+            }
+        )
+    )
+    excise = pd.DataFrame({"sku": ["SKU-1"], "qty": [119.0], "excise_sum": [595.0]})
+    result = recalculate_liquid_margins(
+        sales,
+        cost,
+        excise,
+        excise,
+        lfl_week=32,
+        report_week=32,
+    )
+    expected_excise_part = (24000.0 / 1.2 * (119 / 120)) - (12000.0 * (119 / 120)) - 595.0
+    expected = expected_excise_part + (4800.0 / 120.0)
+    new_margin = float(result["Маржа"].iloc[0])
+    _assert(abs(new_margin - expected) < 0.02, "liquid margin recalculated")
+
+
+def test_liquid_margin_without_excise_uses_sales() -> None:
+    from features.excise_liquid import CATEGORY_LIQUID_25ML
+    from features.liquid_margin import parse_liquid_cost, recalculate_liquid_margins
+
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Shop A"],
+            "Товар ур.4": ["SKU-2"],
+            "Неделя": [32],
+            "Категория": [CATEGORY_LIQUID_25ML],
+            "Количество": [10],
+            "Продажи с НДС": [1000.0],
+            "Маржа": [200.0],
+        }
+    )
+    cost = parse_liquid_cost(
+        pd.DataFrame(
+            {
+                "Склад": ["Shop A"],
+                "Товар4": ["SKU-2"],
+                "Год-Неделя": ["2026/32"],
+                "Продажи (Q)": [10],
+                "Продажи (Σ)": [500.0],
+            }
+        )
+    )
+    result = recalculate_liquid_margins(
+        sales,
+        cost,
+        None,
+        None,
+        lfl_week=32,
+        report_week=32,
+    )
+    _assert(float(result["Маржа"].iloc[0]) == 200.0, "margin from sales without excise")
+
+
 OFFLINE_TESTS = [
     test_column_letter,
     test_sheet_range_name,
@@ -646,6 +742,9 @@ OFFLINE_TESTS = [
     test_turnover_by_level4,
     test_turnover_level4_fallback_u3,
     test_turnover_legacy_level3,
+    test_parse_excise_retail_block,
+    test_liquid_margin_recalculation,
+    test_liquid_margin_without_excise_uses_sales,
 ]
 
 

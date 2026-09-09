@@ -14,7 +14,6 @@ from config.constants import (
     INTERNET_SHOP_CATEGORY_DISPLAY_NAMES,
 )
 from features.client_segments import compute_segment_revenue
-from features.excise_liquid import apply_total_margin_deduction
 from features.clients import render_client_block
 from features.focus import render_focus_block
 from features.reference_orders import (
@@ -49,7 +48,6 @@ def render_global_metrics(
     shops_order: list[str] | None = None,
     checks_clients_df: pd.DataFrame | None = None,
     report_week: int | None = None,
-    excise_liquid_report_qty: float = 0.0,
     turnover_table: pd.DataFrame | None = None,
 ):
     if df is None or df.empty:
@@ -70,7 +68,6 @@ def render_global_metrics(
                     client_segments_df,
                     report_week=report_week,
                     groups_order_rnp=groups_order_rnp,
-                    excise_liquid_report_qty=excise_liquid_report_qty,
                 )
             else:
                 st.info("Нет данных для финансовых метрик.")
@@ -286,13 +283,9 @@ def _build_financial_b2c_rows(
     df: pd.DataFrame,
     client_segments_df: pd.DataFrame | None,
     report_week: int | None,
-    *,
-    excise_liquid_report_qty: float = 0.0,
 ) -> list[_FinancialDisplayRow]:
     revenue = float(df["Продажи с НДС"].sum())
-    margin = apply_total_margin_deduction(
-        float(df["Маржа"].sum()), excise_liquid_report_qty
-    )
+    margin = float(df["Маржа"].sum())
     rows = _triple_metric_rows("B2C", revenue, margin)
 
     if client_segments_df is not None and report_week is not None:
@@ -495,8 +488,6 @@ def render_financial_metrics_table(
     client_segments_df: pd.DataFrame = None,
     report_week: int | None = None,
     groups_order_rnp: list[str] | None = None,
-    *,
-    excise_liquid_report_qty: float = 0.0,
 ) -> None:
     """Две таблицы: общие показатели и подразделения (st.dataframe, можно копировать)."""
     if not _can_build_financial_metrics(df):
@@ -507,7 +498,6 @@ def render_financial_metrics_table(
         df,
         client_segments_df,
         report_week,
-        excise_liquid_report_qty=excise_liquid_report_qty,
     )
     general_table, general_styles = _financial_rows_to_dataframe(b2c_rows)
     st.caption("Общие")

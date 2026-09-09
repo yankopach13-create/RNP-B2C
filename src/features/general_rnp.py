@@ -22,7 +22,6 @@ from features.data_prep import (
     filter_sales_cumulative_to_week,
     sales_week_numbers,
 )
-from features.excise_liquid import apply_total_margin_deduction
 from features.metrics import (
     _can_build_category_sales,
     _can_build_financial_metrics,
@@ -184,7 +183,6 @@ def render_general_rnp_b2c(
     client_segments_df: pd.DataFrame | None = None,
     report_week: int | None = None,
     category_order_general: list[str] | None = None,
-    excise_liquid_report_qty: float = 0.0,
 ) -> None:
     """Одна таблица: метрики РНП B2C + пустые строки по ТЗ."""
     report_week = _resolve_report_week(sales_df, checks_clients_df, report_week)
@@ -201,7 +199,6 @@ def render_general_rnp_b2c(
         report_week=report_week,
         week_column_label=week_col,
         category_order_general=category_order_general,
-        excise_liquid_report_qty=excise_liquid_report_qty,
     )
     st.dataframe(
         table,
@@ -223,7 +220,6 @@ def build_general_rnp_table(
     report_week: int | None = None,
     week_column_label: str | None = None,
     category_order_general: list[str] | None = None,
-    excise_liquid_report_qty: float = 0.0,
 ) -> pd.DataFrame:
     report_week = _resolve_report_week(sales_df, checks_clients_df, report_week)
     week_col = week_column_label or (
@@ -289,7 +285,7 @@ def build_general_rnp_table(
 
     rev_c, md_c, pct_c = _financial_values(df_cum)
     rev_w, md_w, pct_w = _financial_values(
-        df_week, excise_liquid_report_qty=excise_liquid_report_qty
+        df_week
     )
     rows.append(["Выручка", rev_c, rev_w])
     rows.append(["МД", md_c, md_w])
@@ -442,15 +438,11 @@ def _fmt_bonus_revenue_pct(df: pd.DataFrame) -> str:
 
 def _financial_values(
     df: pd.DataFrame | None,
-    *,
-    excise_liquid_report_qty: float = 0.0,
 ) -> tuple[str, str, str]:
     if df is None or not _can_build_financial_metrics(df):
         return "", "", ""
     revenue = float(df["Продажи с НДС"].sum())
-    margin = apply_total_margin_deduction(
-        float(df["Маржа"].sum()), excise_liquid_report_qty
-    )
+    margin = float(df["Маржа"].sum())
     return (
         _fmt_fin_int(revenue),
         _fmt_fin_int(margin),

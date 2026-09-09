@@ -80,7 +80,6 @@ def render_ai_report_b2c(
     *,
     client_segments_df: pd.DataFrame | None = None,
     report_week: int | None = None,
-    excise_liquid_report_qty: float = 0.0,
 ) -> None:
     """Таблица метрик ИИ отчёта: Метрика / Отчётная неделя."""
     report_week = _resolve_report_week(sales_df, checks_clients_df, report_week)
@@ -96,7 +95,6 @@ def render_ai_report_b2c(
         client_segments_df=client_segments_df,
         report_week=report_week,
         week_column_label=week_col,
-        excise_liquid_report_qty=excise_liquid_report_qty,
     )
     st.dataframe(
         table,
@@ -116,7 +114,6 @@ def build_ai_report_table(
     client_segments_df: pd.DataFrame | None = None,
     report_week: int | None = None,
     week_column_label: str | None = None,
-    excise_liquid_report_qty: float = 0.0,
 ) -> pd.DataFrame:
     """Собирает строки ИИ отчёта, копируя значения из расчётов РНП B2C."""
     report_week = _resolve_report_week(sales_df, checks_clients_df, report_week)
@@ -142,9 +139,7 @@ def build_ai_report_table(
         target_rev_week = _fmt_fin_int(target_rev)
         non_target_rev_week = _fmt_fin_int(non_target_rev)
 
-    rev_w, md_w, pct_w = _financial_values(
-        df_week, excise_liquid_report_qty=excise_liquid_report_qty
-    )
+    rev_w, md_w, pct_w = _financial_values(df_week)
 
     rows: list[list[str]] = []
 

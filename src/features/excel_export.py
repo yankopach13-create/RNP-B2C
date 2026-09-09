@@ -22,8 +22,10 @@ from features.clients import (
     _compute_client_metrics,
     _prepare_checks_clients,
 )
+from features.categories import apply_category_reference
 from features.data_prep import filter_sales_by_report_week
 from features.excise_liquid import WeekCalculationConfig
+from features.liquid_margin import recalculate_liquid_margins
 from features.focus import build_focus_display_df
 from features.hookah_products import build_hookah_products_table
 from features.consumables_nesting import (
@@ -146,10 +148,15 @@ def collect_rnp_b2c_sheets(
     sheets: list[ExcelSheetSpec] = []
     report_week = week_config.report_week if week_config else None
     lfl_week = week_config.lfl_week if week_config else None
-    excise_report = week_config.excise_liquid_report if week_config else 0.0
-    excise_lfl = week_config.excise_liquid_lfl if week_config else 0.0
 
     df = prepared.df if prepared is not None else None
+    df = _with_liquid_margins(df, data, week_config)
+    lfl_df = _with_liquid_margins(
+        data.lfl,
+        data,
+        week_config,
+        apply_categories=True,
+    )
     df_report = _drop_excluded_groups(_report_sales_df(df, data.sales, week_config))
     groups_order = _filter_groups_order_list(data.groups_order_rnp)
 
@@ -159,7 +166,6 @@ def collect_rnp_b2c_sheets(
             df_report,
             data.client_segments,
             report_week,
-            excise_liquid_report_qty=excise_report,
         )
         finance_parts.append(_financial_rows_to_dataframe(b2c_rows))
 
@@ -264,13 +270,11 @@ def collect_rnp_b2c_sheets(
             )
 
     lfl_table = build_lfl_factor_table(
-        data.lfl,
+        lfl_df,
         data.categories,
         lfl_week,
         report_week,
         data.category_order_rnp,
-        excise_liquid_lfl_qty=excise_lfl,
-        excise_liquid_report_qty=excise_report,
     )
     if lfl_table is not None and not lfl_table.empty:
         sheets.append(
@@ -600,6 +604,28 @@ def _prepare_table_for_excel(df: pd.DataFrame | None) -> pd.DataFrame:
             out = out.rename(columns={first_col: index_name})
     out = out.loc[:, [c for c in out.columns if not str(c).startswith("_gap")]]
     return out
+
+
+def _with_liquid_margins(
+    sales_df: pd.DataFrame | None,
+    data: AppData,
+    week_config: WeekCalculationConfig | None,
+    *,
+    apply_categories: bool = False,
+) -> pd.DataFrame | None:
+    if sales_df is None or week_config is None or data.liquid_cost is None:
+        return sales_df
+    work_df = sales_df
+    if apply_categories and data.categories is not None:
+        work_df = apply_category_reference(sales_df.copy(), data.categories)
+    return recalculate_liquid_margins(
+        work_df,
+        data.liquid_cost,
+        data.excise_liquid_lfl,
+        data.excise_liquid_report,
+        lfl_week=week_config.lfl_week,
+        report_week=week_config.report_week,
+    )
 
 
 def _report_sales_df(

@@ -9,6 +9,9 @@ _XLSX_TYPES = ["xlsx", "xls"]
 @dataclass
 class UploadedFiles:
     sales: object = None
+    liquid_cost: object = None
+    excise_liquid_lfl: object = None
+    excise_liquid_report: object = None
     checks_clients: object = None
     client_segments: object = None
     turnover_week: object = None
@@ -24,7 +27,9 @@ def render_upload_panel() -> UploadedFiles:
     inject_help_popover_styles()
     container = st.container()
     with container:
-        col_sales, col_turnover, col_clients, col_focus, col_no_bk = st.columns(5)
+        col_sales, col_liquid, col_turnover, col_clients, col_focus, col_no_bk = st.columns(
+            6
+        )
 
         with col_sales:
             render_section_header_with_help(
@@ -44,6 +49,35 @@ def render_upload_panel() -> UploadedFiles:
                 "Продажи",
                 type=_XLSX_TYPES,
                 key="sales_uploader",
+            )
+            st.markdown('<p class="upload-mini-title">Себестоимость жидкости</p>', unsafe_allow_html=True)
+            liquid_cost_file = st.file_uploader(
+                "Себестоимость жидкости",
+                type=_XLSX_TYPES,
+                key="liquid_cost_uploader",
+                help="Бух. себестоимость «Жидкость 25 мл» без акциза (Склад, Товар4, Год-Неделя).",
+            )
+
+        with col_liquid:
+            render_section_header_with_help(
+                title="Акциз жидкости",
+                image_name="sales.png",
+                caption=(
+                    "Загрузите два файла акциза для блока «Розница»: "
+                    "отдельно для LFL-недели и для отчётной недели.<br><br>"
+                    "Столбец 2 — SKU (Товар ур.4), столбец 9 — шт, столбец 10 — сумма акциза."
+                ),
+                align="left",
+            )
+            excise_lfl_file = st.file_uploader(
+                "Акциз жидкости (LFL)",
+                type=_XLSX_TYPES,
+                key="excise_liquid_lfl_uploader",
+            )
+            excise_report_file = st.file_uploader(
+                "Акциз жидкости (отчётная)",
+                type=_XLSX_TYPES,
+                key="excise_liquid_report_uploader",
             )
 
         with col_turnover:
@@ -172,6 +206,9 @@ def render_upload_panel() -> UploadedFiles:
         st.session_state["data_reload_requested"] = True
         st.session_state["uploaded_files"] = {
             "sales": data_file,
+            "liquid_cost": liquid_cost_file,
+            "excise_liquid_lfl": excise_lfl_file,
+            "excise_liquid_report": excise_report_file,
             "checks_clients": checks_clients_file,
             "client_segments": client_segments_file,
             "turnover_week": turnover_week_file,
@@ -184,6 +221,9 @@ def render_upload_panel() -> UploadedFiles:
         container.empty()
         return UploadedFiles(
             sales=data_file,
+            liquid_cost=liquid_cost_file,
+            excise_liquid_lfl=excise_lfl_file,
+            excise_liquid_report=excise_report_file,
             checks_clients=checks_clients_file,
             client_segments=client_segments_file,
             turnover_week=turnover_week_file,
@@ -198,6 +238,9 @@ def render_upload_panel() -> UploadedFiles:
         u = st.session_state.get("uploaded_files", {})
         return UploadedFiles(
             sales=u.get("sales"),
+            liquid_cost=u.get("liquid_cost"),
+            excise_liquid_lfl=u.get("excise_liquid_lfl"),
+            excise_liquid_report=u.get("excise_liquid_report"),
             checks_clients=u.get("checks_clients"),
             client_segments=u.get("client_segments"),
             turnover_week=u.get("turnover_week"),

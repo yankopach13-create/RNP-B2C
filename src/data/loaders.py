@@ -35,6 +35,9 @@ class AppData:
     checks_no_bk: Optional[pd.DataFrame]
     consumables_nesting: Optional[pd.DataFrame]
     focus_fill_free: Optional[pd.DataFrame]
+    liquid_cost: Optional[pd.DataFrame]
+    excise_liquid_lfl: Optional[pd.DataFrame]
+    excise_liquid_report: Optional[pd.DataFrame]
     groups_order_rnp: Optional[list[str]]
     category_order_rnp: Optional[list[str]]
     category_order_general: Optional[list[str]]
@@ -46,6 +49,9 @@ _APP_DATA_OPTIONAL_FIELDS = (
     "checks_no_bk",
     "consumables_nesting",
     "focus_fill_free",
+    "liquid_cost",
+    "excise_liquid_lfl",
+    "excise_liquid_report",
     "turnover_categories",
 )
 
@@ -70,6 +76,9 @@ def normalize_app_data(data: AppData | None) -> AppData | None:
         checks_no_bk=getattr(data, "checks_no_bk", None),
         consumables_nesting=getattr(data, "consumables_nesting", None),
         focus_fill_free=getattr(data, "focus_fill_free", None),
+        liquid_cost=getattr(data, "liquid_cost", None),
+        excise_liquid_lfl=getattr(data, "excise_liquid_lfl", None),
+        excise_liquid_report=getattr(data, "excise_liquid_report", None),
         groups_order_rnp=data.groups_order_rnp,
         category_order_rnp=data.category_order_rnp,
         category_order_general=data.category_order_general,
@@ -405,6 +414,29 @@ def load_all_data(files) -> AppData:
             ["количество чеков", "количество товара", "Количество чеков", "Количество товара"],
         )
 
+    from features.liquid_margin import parse_excise_retail_block, parse_liquid_cost
+
+    liquid_cost_df = None
+    excise_lfl_df = None
+    excise_report_df = None
+    if getattr(files, "liquid_cost", None):
+        cost_raw = _read_excel(files.liquid_cost, label="Себестоимость жидкости")
+        liquid_cost_df = parse_liquid_cost(cost_raw)
+    if getattr(files, "excise_liquid_lfl", None):
+        excise_lfl_raw = _read_excel(
+            files.excise_liquid_lfl,
+            label="Акциз жидкости (LFL)",
+            header=None,
+        )
+        excise_lfl_df = parse_excise_retail_block(excise_lfl_raw)
+    if getattr(files, "excise_liquid_report", None):
+        excise_report_raw = _read_excel(
+            files.excise_liquid_report,
+            label="Акциз жидкости (отчётная)",
+            header=None,
+        )
+        excise_report_df = parse_excise_retail_block(excise_report_raw)
+
     return AppData(
         sales=sales_df,
         groups=groups_df,
@@ -419,6 +451,9 @@ def load_all_data(files) -> AppData:
         checks_no_bk=checks_no_bk_df,
         consumables_nesting=consumables_nesting_df,
         focus_fill_free=None,
+        liquid_cost=liquid_cost_df,
+        excise_liquid_lfl=excise_lfl_df,
+        excise_liquid_report=excise_report_df,
         groups_order_rnp=groups_order_rnp,
         category_order_rnp=category_order_rnp,
         category_order_general=category_order_general,
