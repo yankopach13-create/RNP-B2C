@@ -58,9 +58,11 @@ _COST_SUM_FALLBACK = re.compile(r"^продажи\([^q)]+\)$")
 _EXCISE_SKU_COL = 1
 _EXCISE_QTY_COL = 8
 _EXCISE_SUM_COL = 9
+_EXCISE_SKU_SCAN_COLS = 6
 
 _RETAIL_ANCHOR = "Розница"
 _WRITEOFF_ANCHOR = "Списание за период"
+_EXCISE_ANCHORS = (_RETAIL_ANCHOR, _WRITEOFF_ANCHOR)
 
 AUDIT_DETAIL_COLUMNS = [
     "Товар ур.4",
@@ -115,7 +117,8 @@ def parse_year_week(value) -> int | None:
 def _normalize_text(value) -> str:
     if pd.isna(value):
         return ""
-    return str(value).strip()
+    text = str(value).replace("\xa0", " ")
+    return " ".join(text.split())
 
 
 def _coerce_number(value) -> float | None:
@@ -214,10 +217,71 @@ def _row_contains_anchor(row: pd.Series, anchor: str) -> bool:
     return False
 
 
+def _is_excise_anchor(text: str) -> bool:
+    folded = text.casefold()
+    return any(anchor.casefold() in folded for anchor in _EXCISE_ANCHORS)
+
+
+def _looks_like_sku_text(text: str) -> bool:
+    if not text or _is_excise_anchor(text):
+        return False
+    if _coerce_number(text) is not None and len(text.replace(" ", "")) <= 12:
+        return False
+    return True
+
+
+def _detect_excise_qty_sum_cols(row: pd.Series) -> tuple[int, int]:
+    """По строке «Розница» находит столбцы шт и суммы (последние два числа в строке)."""
+    numeric_cols: list[int] = []
+    for idx, value in enumerate(row):
+        number = _coerce_number(value)
+        if number is not None and number > 0:
+            numeric_cols.append(idx)
+    if len(numeric_cols) >= 2:
+        return numeric_cols[-2], numeric_cols[-1]
+    return _EXCISE_QTY_COL, _EXCISE_SUM_COL
+
+
+def _extract_excise_sku(row: pd.Series, *, before_col: int) -> str:
+    """
+    SKU из первых столбцов строки.
+    Учитывает объединённые ячейки: название может быть в col 1 (index 0), а col 2 пуст.
+    """
+    limit = min(max(before_col, 1), _EXCISE_SKU_SCAN_COLS, len(row))
+    candidates: list[tuple[int, str]] = []
+    for idx in range(limit):
+        text = _normalize_text(row.iloc[idx])
+        if _looks_like_sku_text(text):
+            candidates.append((len(text), text))
+
+    if not candidates:
+        return ""
+
+    candidates.sort(reverse=True)
+    return candidates[0][1]
+
+
+def format_excise_parse_status(df: pd.DataFrame | None, label: str) -> str | None:
+    """Краткий статус парсинга акциза для UI после загрузки."""
+    if df is None:
+        return None
+    sku_count = len(df)
+    if sku_count == 0:
+        return (
+            f"⚠ {label}: из блока «Розница» не загружено ни одного SKU. "
+            "Проверьте объединённые ячейки в столбце с названием товара."
+        )
+    qty_total = float(df["qty"].sum())
+    sum_total = float(df["excise_sum"].sum())
+    return f"✓ {label}: {sku_count} SKU, {qty_total:.0f} шт., сумма акциза {sum_total:,.2f}".replace(
+        ",", " "
+    )
+
+
 def parse_excise_retail_block(raw: pd.DataFrame) -> pd.DataFrame:
     """
     Парсит блок «Розница» из файла акциза.
-    Столбец 2 (index 1) — SKU (= Товар ур.4), 9 — шт, 10 — сумма акциза.
+    SKU — в первых столбцах (col 1–2 Excel, с учётом merge), шт/сумма — по строке «Розница».
     """
     if raw is None or raw.empty:
         return pd.DataFrame(columns=["sku", "qty", "excise_sum"])
@@ -242,14 +306,21 @@ def parse_excise_retail_block(raw: pd.DataFrame) -> pd.DataFrame:
     if writeoff_idx is None:
         writeoff_idx = len(df)
 
+    anchor_row = df.iloc[retail_idx]
+    qty_col, sum_col = _detect_excise_qty_sum_cols(anchor_row)
     block = df.iloc[retail_idx + 1 : writeoff_idx].copy()
+
     rows: list[dict[str, float | str]] = []
+    last_sku = ""
     for _, row in block.iterrows():
-        sku = _normalize_text(row.iloc[_EXCISE_SKU_COL] if len(row) > _EXCISE_SKU_COL else "")
-        qty = _coerce_number(row.iloc[_EXCISE_QTY_COL] if len(row) > _EXCISE_QTY_COL else None)
-        excise_sum = _coerce_number(
-            row.iloc[_EXCISE_SUM_COL] if len(row) > _EXCISE_SUM_COL else None
-        )
+        sku = _extract_excise_sku(row, before_col=qty_col)
+        if sku:
+            last_sku = sku
+        elif last_sku:
+            sku = last_sku
+
+        qty = _coerce_number(row.iloc[qty_col] if len(row) > qty_col else None)
+        excise_sum = _coerce_number(row.iloc[sum_col] if len(row) > sum_col else None)
         if not sku or qty is None or excise_sum is None:
             continue
         if qty <= 0:

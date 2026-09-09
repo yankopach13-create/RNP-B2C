@@ -641,6 +641,46 @@ def test_parse_excise_retail_block() -> None:
     _assert(parsed.iloc[0]["excise_sum"] == 1122, "excise sum")
 
 
+def test_parse_excise_retail_block_merged_sku_column() -> None:
+    from features.liquid_margin import parse_excise_retail_block
+
+    raw = pd.DataFrame(
+        [
+            ["", "Розница", 10123, 258136.5],
+            [
+                "Жидкость fill BLEND - Cherchil ( Винстон ) 25 мл ( 17 ± 3 мг ) РБ",
+                "",
+                44,
+                1122.0,
+            ],
+            ["", "Списание за период", "", ""],
+        ]
+    )
+    parsed = parse_excise_retail_block(raw)
+    _assert(len(parsed) == 1, "merged sku column: one sku")
+    _assert(parsed.iloc[0]["qty"] == 44, "merged sku column: qty")
+    _assert(parsed.iloc[0]["excise_sum"] == 1122.0, "merged sku column: sum")
+    _assert("Cherchil" in parsed.iloc[0]["sku"], "merged sku column: sku text")
+
+
+def test_parse_excise_retail_block_forward_fill_sku() -> None:
+    from features.liquid_margin import parse_excise_retail_block
+
+    raw = pd.DataFrame(
+        [
+            ["", "Розница", "", "", "", "", "", "", 15, 382.5],
+            ["SKU-1", "", "", "", "", "", "", "", 10, 255.0],
+            ["", "", "", "", "", "", "", "", 5, 127.5],
+            ["", "Списание за период", "", "", "", "", "", "", "", ""],
+        ]
+    )
+    parsed = parse_excise_retail_block(raw)
+    _assert(len(parsed) == 1, "forward fill: one sku")
+    _assert(parsed.iloc[0]["sku"] == "SKU-1", "forward fill: sku")
+    _assert(parsed.iloc[0]["qty"] == 15, "forward fill: qty sum")
+    _assert(parsed.iloc[0]["excise_sum"] == 382.5, "forward fill: sum")
+
+
 def test_parse_liquid_cost_sum_column_aliases() -> None:
     from features.liquid_margin import parse_liquid_cost
 
@@ -840,6 +880,8 @@ OFFLINE_TESTS = [
     test_turnover_level4_fallback_u3,
     test_turnover_legacy_level3,
     test_parse_excise_retail_block,
+    test_parse_excise_retail_block_merged_sku_column,
+    test_parse_excise_retail_block_forward_fill_sku,
     test_parse_liquid_cost_sum_column_aliases,
     test_liquid_margin_recalculation,
     test_liquid_margin_fallback_qty,
