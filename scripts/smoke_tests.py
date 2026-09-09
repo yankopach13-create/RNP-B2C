@@ -663,6 +663,48 @@ def test_parse_excise_retail_block_merged_sku_column() -> None:
     _assert("Cherchil" in parsed.iloc[0]["sku"], "merged sku column: sku text")
 
 
+def test_parse_excise_retail_block_skips_grouped_detail_rows() -> None:
+    from features.liquid_margin import parse_excise_retail_block
+
+    sku = "Жидкость fill BAY - Neon ( Энергетик ) 25 мл ( 15 ± 3 мг ) РБ"
+    raw = pd.DataFrame(
+        [
+            ["", "Розница", "", "", "", "", "", "", 2, 51.0],
+            ["", sku, "", "", "", "", "", "", 1, 25.5],
+            [
+                "",
+                sku,
+                "Чек ККМ 06573820 от 05.09.2026",
+                25,
+                "1,0200",
+                "Продажа",
+                "",
+                "",
+                1,
+                25.5,
+            ],
+            ["", "SKU-2", "", "", "", "", "", "", 1, 25.5],
+            [
+                "",
+                "SKU-2",
+                "Чек ККМ 06573821 от 05.09.2026",
+                25,
+                "1,0200",
+                "Продажа",
+                "",
+                "",
+                1,
+                25.5,
+            ],
+            ["", "Списание за период", "", "", "", "", "", "", "", ""],
+        ]
+    )
+    parsed = parse_excise_retail_block(raw)
+    _assert(len(parsed) == 2, "grouped: two sku summaries")
+    _assert(float(parsed["qty"].sum()) == 2, "grouped: total qty without duplicate")
+    _assert(abs(float(parsed["excise_sum"].sum()) - 51.0) < 0.01, "grouped: total sum without duplicate")
+
+
 def test_parse_excise_retail_block_forward_fill_sku() -> None:
     from features.liquid_margin import parse_excise_retail_block
 
@@ -956,6 +998,7 @@ OFFLINE_TESTS = [
     test_parse_excise_retail_block,
     test_parse_excise_retail_block_merged_sku_column,
     test_parse_excise_retail_block_forward_fill_sku,
+    test_parse_excise_retail_block_skips_grouped_detail_rows,
     test_normalize_sku_strips_rb_st_suffixes,
     test_liquid_margin_matches_excise_with_rb_suffix,
     test_parse_liquid_cost_sum_column_aliases,

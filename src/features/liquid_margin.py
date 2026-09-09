@@ -63,6 +63,8 @@ _EXCISE_SKU_SCAN_COLS = 6
 _RETAIL_ANCHOR = "Розница"
 _WRITEOFF_ANCHOR = "Списание за период"
 _EXCISE_ANCHORS = (_RETAIL_ANCHOR, _WRITEOFF_ANCHOR)
+_EXCISE_DETAIL_RECEIPT_RE = re.compile(r"чек\s*ккм", re.IGNORECASE)
+_EXCISE_DETAIL_DOC_TYPES = frozenset({"продажа", "возврат"})
 
 AUDIT_DETAIL_COLUMNS = [
     "Товар ур.4",
@@ -253,6 +255,24 @@ def _detect_excise_qty_sum_cols(row: pd.Series) -> tuple[int, int]:
     return _EXCISE_QTY_COL, _EXCISE_SUM_COL
 
 
+def _is_excise_detail_row(row: pd.Series) -> bool:
+    """
+    Строка детализации (чек) внутри группы SKU.
+    Такие строки дублируют итог группы — их не суммируем.
+    """
+    for value in row:
+        if pd.isna(value):
+            continue
+        text = _normalize_text(value)
+        if not text:
+            continue
+        if _EXCISE_DETAIL_RECEIPT_RE.search(text):
+            return True
+        if text.casefold() in _EXCISE_DETAIL_DOC_TYPES:
+            return True
+    return False
+
+
 def _extract_excise_sku(row: pd.Series, *, before_col: int) -> str:
     """
     SKU из первых столбцов строки.
@@ -324,6 +344,8 @@ def parse_excise_retail_block(raw: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, float | str]] = []
     last_sku = ""
     for _, row in block.iterrows():
+        if _is_excise_detail_row(row):
+            continue
         sku = _extract_excise_sku(row, before_col=qty_col)
         if sku:
             last_sku = sku
