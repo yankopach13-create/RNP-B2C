@@ -739,30 +739,6 @@ def _render_liquid_margin_audit_block_impl(
         report_week=report_week,
     )
 
-    caption_parts: list[str] = []
-    if not category_summary.empty:
-        for _, row in category_summary.iterrows():
-            delta = float(row["Изменение маржи"])
-            sign = "−" if delta < 0 else "+"
-            caption_parts.append(
-                f"{row['Период']} (нед. {int(row['Неделя'])}): "
-                f"изменение маржи {sign}{abs(delta):,.2f}".replace(",", " ")
-            )
-    if report_audit is not None:
-        detail_df, summary_df = report_audit
-        diff_rows = int(
-            (detail_df["Маржа расчётная"] - detail_df["Маржа в отчёте"]).abs().gt(0.01).sum()
-        )
-        caption_parts.append(
-            f"Отчётная: строк {len(detail_df)}, SKU {len(summary_df)}"
-            + (f", расхождений {diff_rows}" if diff_rows else "")
-        )
-    if lfl_audit is not None:
-        lfl_detail, lfl_summary = lfl_audit
-        caption_parts.append(f"LFL: строк {len(lfl_detail)}, SKU {len(lfl_summary)}")
-
-    st.caption(" | ".join(caption_parts))
-
     report_detail = report_summary = lfl_detail = lfl_summary = None
     if report_audit is not None:
         report_detail, report_summary = report_audit
@@ -787,6 +763,87 @@ def _render_liquid_margin_audit_block_impl(
         use_container_width=True,
         key="download_liquid_margin_audit",
     )
+    _render_liquid_margin_audit_reference(
+        excise_lfl=excise_lfl,
+        excise_report=excise_report,
+        category_summary=category_summary,
+        report_audit=report_audit,
+        lfl_audit=lfl_audit,
+    )
+
+
+def _render_liquid_margin_audit_reference(
+    *,
+    excise_lfl,
+    excise_report,
+    category_summary: pd.DataFrame,
+    report_audit,
+    lfl_audit,
+) -> None:
+    """Справочные подписи под кнопкой скачивания проверки себестоимости."""
+    from features.liquid_margin import format_excise_parse_status
+
+    st.write("")
+    has_content = False
+
+    excise_lines: list[tuple[str, bool]] = []
+    for label, excise_df in (
+        ("Акциз жидкости (LFL)", excise_lfl),
+        ("Акциз жидкости (отчётная)", excise_report),
+    ):
+        status = format_excise_parse_status(excise_df, label)
+        if status:
+            excise_lines.append((status, status.startswith("⚠")))
+
+    if excise_lines:
+        has_content = True
+        st.markdown("**Файлы акциза**")
+        for line, is_warning in excise_lines:
+            if is_warning:
+                st.warning(line)
+            else:
+                st.caption(line)
+        st.write("")
+
+    margin_lines: list[str] = []
+    if category_summary is not None and not category_summary.empty:
+        for _, row in category_summary.iterrows():
+            delta = float(row["Изменение маржи"])
+            sign = "−" if delta < 0 else "+"
+            margin_lines.append(
+                f"{row['Период']} (нед. {int(row['Неделя'])}): "
+                f"изменение маржи {sign}{abs(delta):,.2f}".replace(",", " ")
+            )
+
+    if margin_lines:
+        has_content = True
+        st.markdown("**Изменение маржи**")
+        for line in margin_lines:
+            st.caption(line)
+        st.write("")
+
+    detail_lines: list[str] = []
+    if report_audit is not None:
+        detail_df, summary_df = report_audit
+        diff_rows = int(
+            (detail_df["Маржа расчётная"] - detail_df["Маржа в отчёте"]).abs().gt(0.01).sum()
+        )
+        detail_lines.append(
+            f"Отчётная: строк {len(detail_df)}, SKU {len(summary_df)}"
+            + (f", расхождений {diff_rows}" if diff_rows else "")
+        )
+    if lfl_audit is not None:
+        lfl_detail, lfl_summary = lfl_audit
+        detail_lines.append(f"LFL: строк {len(lfl_detail)}, SKU {len(lfl_summary)}")
+
+    if detail_lines:
+        has_content = True
+        st.markdown("**Детализация проверки**")
+        for line in detail_lines:
+            st.caption(line)
+
+    if not has_content:
+        st.caption("Справочная информация появится после загрузки файлов акциза и продаж.")
 
 
 def render_category_sales_table(

@@ -76,18 +76,6 @@ def main():
         try:
             with st.spinner("Загрузка и подготовка данных…"):
                 data, prepared = load_and_store_app_data(files)
-            from features.liquid_margin import format_excise_parse_status
-
-            for label, excise_df in (
-                ("Акциз жидкости (LFL)", data.excise_liquid_lfl),
-                ("Акциз жидкости (отчётная)", data.excise_liquid_report),
-            ):
-                status = format_excise_parse_status(excise_df, label)
-                if status:
-                    if status.startswith("⚠"):
-                        st.warning(status)
-                    else:
-                        st.success(status)
         except (ValueError, OSError) as exc:
             st.error(str(exc))
             st.stop()
