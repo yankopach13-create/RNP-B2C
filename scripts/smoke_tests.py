@@ -681,6 +681,80 @@ def test_parse_excise_retail_block_forward_fill_sku() -> None:
     _assert(parsed.iloc[0]["excise_sum"] == 382.5, "forward fill: sum")
 
 
+def test_normalize_sku_strips_rb_st_suffixes() -> None:
+    from features.liquid_margin import _normalize_sku, parse_excise_retail_block, parse_liquid_cost
+
+    sku = "Жидкость fill BAY - Neon ( Энергетик ) 25 мл ( 15 ± 3 мг )"
+    _assert(_normalize_sku(f"{sku} РБ") == sku, "strip RB suffix")
+    _assert(_normalize_sku(f"{sku} СТ") == sku, "strip ST suffix")
+    _assert(_normalize_sku(f"{sku}  РБ  ") == sku, "strip RB with extra spaces")
+
+    cost = parse_liquid_cost(
+        pd.DataFrame(
+            {
+                "Склад": ["Shop A"],
+                "Товар4": [f"{sku} РБ"],
+                "Год-Неделя": ["2026/32"],
+                "Продажи (Q)": [10],
+                "Продажи (Σ)": [500.0],
+            }
+        )
+    )
+    _assert(cost.iloc[0]["sku"] == sku, "cost sku without suffix")
+
+    excise_raw = pd.DataFrame(
+        [
+            ["", "Розница", "", "", "", "", "", "", 44, 1122],
+            ["", f"{sku} РБ", "", "", "", "", "", "", 44, 1122],
+            ["", "Списание за период", "", "", "", "", "", "", "", ""],
+        ]
+    )
+    excise = parse_excise_retail_block(excise_raw)
+    _assert(excise.iloc[0]["sku"] == sku, "excise sku without suffix")
+
+
+def test_liquid_margin_matches_excise_with_rb_suffix() -> None:
+    from features.excise_liquid import CATEGORY_LIQUID_25ML
+    from features.liquid_margin import parse_excise_retail_block, parse_liquid_cost, recalculate_liquid_margins
+
+    sku = "Жидкость fill BLEND - Cherchil ( Винстон ) 25 мл ( 17 ± 3 мг )"
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Shop A"],
+            "Товар ур.4": [sku],
+            "Неделя": [32],
+            "Категория": [CATEGORY_LIQUID_25ML],
+            "Количество": [44],
+            "Продажи с НДС": [8800.0],
+            "Маржа": [2200.0],
+        }
+    )
+    cost = parse_liquid_cost(
+        pd.DataFrame(
+            {
+                "Склад": ["Shop A"],
+                "Товар4": [sku],
+                "Год-Неделя": ["2026/32"],
+                "Продажи (Q)": [44],
+                "Продажи (Σ)": [4400.0],
+            }
+        )
+    )
+    excise = parse_excise_retail_block(
+        pd.DataFrame(
+            [
+                ["", "Розница", "", "", "", "", "", "", 44, 1122],
+                ["", f"{sku} РБ", "", "", "", "", "", "", 44, 1122],
+                ["", "Списание за период", "", "", "", "", "", "", "", ""],
+            ]
+        )
+    )
+    result = recalculate_liquid_margins(
+        sales, cost, excise, excise, lfl_week=32, report_week=32
+    )
+    _assert(float(result["Маржа"].iloc[0]) != 2200.0, "margin recalculated with RB excise sku")
+
+
 def test_parse_liquid_cost_sum_column_aliases() -> None:
     from features.liquid_margin import parse_liquid_cost
 
@@ -882,6 +956,8 @@ OFFLINE_TESTS = [
     test_parse_excise_retail_block,
     test_parse_excise_retail_block_merged_sku_column,
     test_parse_excise_retail_block_forward_fill_sku,
+    test_normalize_sku_strips_rb_st_suffixes,
+    test_liquid_margin_matches_excise_with_rb_suffix,
     test_parse_liquid_cost_sum_column_aliases,
     test_liquid_margin_recalculation,
     test_liquid_margin_fallback_qty,

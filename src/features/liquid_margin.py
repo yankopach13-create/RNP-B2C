@@ -121,6 +121,17 @@ def _normalize_text(value) -> str:
     return " ".join(text.split())
 
 
+_SKU_SUFFIX_RE = re.compile(r"\s*(?:РБ|СТ)\s*$")
+
+
+def _normalize_sku(value) -> str:
+    """Единый ключ SKU: пробелы + снятие суффиксов «РБ»/«СТ» в конце названия."""
+    text = _normalize_text(value)
+    if not text:
+        return ""
+    return _SKU_SUFFIX_RE.sub("", text).rstrip()
+
+
 def _coerce_number(value) -> float | None:
     if pd.isna(value):
         return None
@@ -190,7 +201,7 @@ def parse_liquid_cost(raw: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(
         {
             "shop": df[cols[_COST_SHOP]].map(_normalize_text),
-            "sku": df[cols[_COST_SKU]].map(_normalize_text),
+            "sku": df[cols[_COST_SKU]].map(_normalize_sku),
             "week": df[cols[_COST_YEAR_WEEK]].map(parse_year_week),
             "qty": df[cols[_COST_QTY]].map(_coerce_number),
             "buh_cost": df[cols[_COST_SUM]].map(_coerce_number),
@@ -325,7 +336,7 @@ def parse_excise_retail_block(raw: pd.DataFrame) -> pd.DataFrame:
             continue
         if qty <= 0:
             continue
-        rows.append({"sku": sku, "qty": qty, "excise_sum": excise_sum})
+        rows.append({"sku": _normalize_sku(sku), "qty": qty, "excise_sum": excise_sum})
 
     if not rows:
         return pd.DataFrame(columns=["sku", "qty", "excise_sum"])
@@ -356,15 +367,17 @@ def _excise_for_week(
 def _sku_in_cost(cost_df: pd.DataFrame, sku: str, week: int) -> bool:
     if cost_df is None or cost_df.empty:
         return False
-    mask = (cost_df["sku"] == sku) & (cost_df["week"] == week)
+    sku_key = _normalize_sku(sku)
+    mask = (cost_df["sku"] == sku_key) & (cost_df["week"] == week)
     return bool(mask.any())
 
 
 def _shop_cost(cost_df: pd.DataFrame, shop: str, sku: str, week: int) -> float:
     if cost_df is None or cost_df.empty:
         return 0.0
+    sku_key = _normalize_sku(sku)
     rows = cost_df.loc[
-        (cost_df["shop"] == shop) & (cost_df["sku"] == sku) & (cost_df["week"] == week)
+        (cost_df["shop"] == shop) & (cost_df["sku"] == sku_key) & (cost_df["week"] == week)
     ]
     if rows.empty:
         return 0.0
@@ -374,7 +387,8 @@ def _shop_cost(cost_df: pd.DataFrame, shop: str, sku: str, week: int) -> float:
 def _excise_row(excise_df: pd.DataFrame | None, sku: str) -> tuple[float, float]:
     if excise_df is None or excise_df.empty:
         return 0.0, 0.0
-    rows = excise_df.loc[excise_df["sku"] == sku]
+    sku_key = _normalize_sku(sku)
+    rows = excise_df.loc[excise_df["sku"] == sku_key]
     if rows.empty:
         return 0.0, 0.0
     qty = float(rows["qty"].sum())
