@@ -625,6 +625,7 @@ def _with_liquid_margins(
         data.excise_liquid_report,
         lfl_week=week_config.lfl_week,
         report_week=week_config.report_week,
+        excise_from_sales_skus=getattr(data, "excise_from_sales_skus", None),
     )
 
 

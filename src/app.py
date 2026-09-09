@@ -393,9 +393,8 @@ def _render_rnp_b2c_results(
     report_week = week_config.report_week if week_config else None
     lfl_week = week_config.lfl_week if week_config else None
 
-    sales_original_report = None
-    if prepared is not None and prepared.df is not None and report_week is not None:
-        sales_original_report = filter_sales_by_report_week(prepared.df, report_week)
+    sales_original_all = prepared.df if prepared is not None and prepared.df is not None else None
+    sales_adjusted_all = df
 
     if df_report is not None:
         render_global_metrics(
@@ -412,11 +411,13 @@ def _render_rnp_b2c_results(
             checks_clients_df=data.checks_clients,
             report_week=report_week,
             turnover_table=get_cached_turnover_table(data),
-            liquid_audit_sales_original=sales_original_report,
+            liquid_audit_sales_original=sales_original_all,
             liquid_audit_cost=data.liquid_cost,
             liquid_audit_excise_lfl=data.excise_liquid_lfl,
             liquid_audit_excise_report=data.excise_liquid_report,
             liquid_audit_lfl_week=lfl_week,
+            liquid_audit_excise_from_sales_skus=getattr(data, "excise_from_sales_skus", None),
+            liquid_audit_sales_adjusted=sales_adjusted_all,
         )
         _render_shop_economy_and_lfl(
             data,

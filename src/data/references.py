@@ -36,6 +36,7 @@ REF_GROUPS_ORDER = "groups_order"
 REF_FOCUS = "focus"
 REF_TURNOVER_CATEGORIES = "turnover_categories"
 REF_PCT_NO_BK = "pct_no_bk"
+REF_EXCISE_FROM_SALES = "excise_from_sales"
 
 _REFERENCE_META: dict[str, dict[str, Any]] = {
     REF_SHOP_GROUPS: {
@@ -72,6 +73,11 @@ _REFERENCE_META: dict[str, dict[str, Any]] = {
         "sheet": "%_bk",
         "local": REFERENCE_PCT_NO_BK_FILENAMES,
         "title": "% без БК",
+    },
+    REF_EXCISE_FROM_SALES: {
+        "sheet": "акциз_из_продаж",
+        "local": ("excise_from_sales.xlsx",),
+        "title": "Акциз из продаж (SKU)",
     },
 }
 

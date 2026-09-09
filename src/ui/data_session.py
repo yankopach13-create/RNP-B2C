@@ -26,7 +26,7 @@ DF_REPORT_CACHE_VERSION_KEY = "df_report_cache_version"
 TURNOVER_TABLE_KEY = "turnover_table"
 TURNOVER_CACHE_VERSION_KEY = "turnover_cache_version"
 # Увеличивайте при изменениях расчётов — сбрасывает session_state после деплоя.
-APP_LOGIC_VERSION = "2026-09-09-excise-lfl-no-writeoff"
+APP_LOGIC_VERSION = "2026-09-09-excise-from-sales-ref"
 APP_LOGIC_VERSION_KEY = "app_logic_version"
 LIQUID_MARGIN_CACHE_KEY = "liquid_margin_cache"
 LIQUID_MARGIN_CACHE_VERSION_KEY = "liquid_margin_cache_version"
@@ -160,6 +160,7 @@ def apply_liquid_margins(
         data.excise_liquid_report,
         lfl_week=week_config.lfl_week,
         report_week=week_config.report_week,
+        excise_from_sales_skus=getattr(data, "excise_from_sales_skus", None),
     )
     cache[cache_key] = adjusted
     return adjusted

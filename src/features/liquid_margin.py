@@ -21,8 +21,26 @@ COL_CATEGORY = "Категория"
 
 METHOD_FROM_SALES_NO_COST = "из продаж (нет себестоимости)"
 METHOD_FROM_SALES_NO_EXCISE = "из продаж (нет акциза)"
+METHOD_FROM_SALES_REF = "из продаж (справочник акциз_из_продаж)"
 METHOD_FULL = "полный расчёт"
 METHOD_FALLBACK_ONLY = "только fallback (из продаж)"
+
+_METHODS_FROM_SALES = frozenset(
+    {
+        METHOD_FROM_SALES_NO_COST,
+        METHOD_FROM_SALES_NO_EXCISE,
+        METHOD_FROM_SALES_REF,
+    }
+)
+
+_EXCISE_FROM_SALES_SKU_COLUMNS = (
+    "Товар ур.4",
+    "товар ур.4",
+    "Товар4",
+    "товар4",
+    "SKU",
+    "sku",
+)
 
 _COST_SHOP = "Склад"
 _COST_SKU = "Товар4"
@@ -194,6 +212,76 @@ def _resolve_cost_columns(columns: list[str]) -> dict[str, str]:
             + ", ".join(columns)
         )
     return resolved
+
+
+def parse_excise_from_sales_skus(raw: pd.DataFrame | None) -> frozenset[str]:
+    """SKU из справочника «акциз_из_продаж» — маржа только из файла продаж."""
+    if raw is None or raw.empty:
+        return frozenset()
+
+    df = raw.copy()
+    df.columns = df.columns.astype(str).str.strip()
+    normalized_cols = {_normalize_column_key(col): col for col in df.columns}
+
+    sku_col = None
+    for alias in _EXCISE_FROM_SALES_SKU_COLUMNS:
+        key = _normalize_column_key(alias)
+        if key in normalized_cols:
+            sku_col = normalized_cols[key]
+            break
+    if sku_col is None and len(df.columns) >= 1:
+        sku_col = df.columns[0]
+
+    if sku_col is None:
+        return frozenset()
+
+    skus = {_normalize_sku(value) for value in df[sku_col]}
+    return frozenset(sku for sku in skus if sku)
+
+
+def _sku_uses_sales_margin(sku: str, excise_from_sales_skus: frozenset[str] | None) -> bool:
+    if not excise_from_sales_skus:
+        return False
+    return _normalize_sku(sku) in excise_from_sales_skus
+
+
+def _append_sales_margin_audit_rows(
+    rows: list[dict[str, object]],
+    *,
+    group,
+    sku: str,
+    week: int,
+    avg_margin: float,
+    adjusted_margins: dict[int, float],
+    method: str,
+    shop_buh_cost: float = 0.0,
+) -> None:
+    for idx, row in group.iterrows():
+        orig = float(row[COL_MARGIN])
+        rows.append(
+            {
+                "_row_index": int(idx),
+                "Товар ур.4": sku,
+                "Магазин": _normalize_text(row.get(COL_SHOP, "")),
+                "Неделя": week,
+                "Кол-во": float(row[COL_QTY]),
+                "Продажи с НДС": float(row[COL_REVENUE]),
+                "Маржа из продаж": orig,
+                "Средняя маржа/шт (SKU)": avg_margin,
+                "Бух. себес (магазин)": shop_buh_cost,
+                "Акциз шт (SKU)": 0.0,
+                "Акциз сумма (SKU)": 0.0,
+                "Шт с акцизом (строка)": 0.0,
+                "Шт fallback (строка)": float(row[COL_QTY]),
+                "Выручка без НДС (акциз)": 0.0,
+                "Себес (акциз)": 0.0,
+                "Акциз (строка)": 0.0,
+                "Маржа fallback": orig,
+                "Маржа расчётная": orig,
+                "Маржа в отчёте": adjusted_margins.get(int(idx), orig),
+                "Метод": method,
+            }
+        )
 
 
 def parse_liquid_cost(raw: pd.DataFrame) -> pd.DataFrame:
@@ -614,6 +702,7 @@ def build_liquid_margin_audit(
     *,
     lfl_week: int | None,
     report_week: int | None,
+    excise_from_sales_skus: frozenset[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame] | None:
     """Детализация расчёта маржи жидкости по строкам и сводка по SKU."""
     liquid = _prepare_liquid_sales(sales_df)
@@ -644,33 +733,28 @@ def build_liquid_margin_audit(
         sales_margin_total = float(group[COL_MARGIN].sum())
         avg_margin = sales_margin_total / sales_qty
 
+        if _sku_uses_sales_margin(sku, excise_from_sales_skus):
+            _append_sales_margin_audit_rows(
+                rows,
+                group=group,
+                sku=sku,
+                week=week,
+                avg_margin=avg_margin,
+                adjusted_margins=adjusted_margins,
+                method=METHOD_FROM_SALES_REF,
+            )
+            continue
+
         if cost_df is None or cost_df.empty or not _sku_in_cost(cost_df, sku, week):
-            for idx, row in group.iterrows():
-                orig = float(row[COL_MARGIN])
-                rows.append(
-                    {
-                        "_row_index": int(idx),
-                        "Товар ур.4": sku,
-                        "Магазин": _normalize_text(row.get(COL_SHOP, "")),
-                        "Неделя": week,
-                        "Кол-во": float(row[COL_QTY]),
-                        "Продажи с НДС": float(row[COL_REVENUE]),
-                        "Маржа из продаж": orig,
-                        "Средняя маржа/шт (SKU)": avg_margin,
-                        "Бух. себес (магазин)": 0.0,
-                        "Акциз шт (SKU)": 0.0,
-                        "Акциз сумма (SKU)": 0.0,
-                        "Шт с акцизом (строка)": 0.0,
-                        "Шт fallback (строка)": float(row[COL_QTY]),
-                        "Выручка без НДС (акциз)": 0.0,
-                        "Себес (акциз)": 0.0,
-                        "Акциз (строка)": 0.0,
-                        "Маржа fallback": orig,
-                        "Маржа расчётная": orig,
-                        "Маржа в отчёте": adjusted_margins.get(int(idx), orig),
-                        "Метод": METHOD_FROM_SALES_NO_COST,
-                    }
-                )
+            _append_sales_margin_audit_rows(
+                rows,
+                group=group,
+                sku=sku,
+                week=week,
+                avg_margin=avg_margin,
+                adjusted_margins=adjusted_margins,
+                method=METHOD_FROM_SALES_NO_COST,
+            )
             continue
 
         excise_df = _excise_for_week(
@@ -684,35 +768,16 @@ def build_liquid_margin_audit(
 
         if raw_excise_qty <= 0:
             for idx, row in group.iterrows():
-                orig = float(row[COL_MARGIN])
-                rows.append(
-                    {
-                        "_row_index": int(idx),
-                        "Товар ур.4": sku,
-                        "Магазин": _normalize_text(row.get(COL_SHOP, "")),
-                        "Неделя": week,
-                        "Кол-во": float(row[COL_QTY]),
-                        "Продажи с НДС": float(row[COL_REVENUE]),
-                        "Маржа из продаж": orig,
-                        "Средняя маржа/шт (SKU)": avg_margin,
-                        "Бух. себес (магазин)": _shop_cost(
-                            cost_df,
-                            _normalize_text(row.get(COL_SHOP, "")),
-                            sku,
-                            week,
-                        ),
-                        "Акциз шт (SKU)": 0.0,
-                        "Акциз сумма (SKU)": 0.0,
-                        "Шт с акцизом (строка)": 0.0,
-                        "Шт fallback (строка)": float(row[COL_QTY]),
-                        "Выручка без НДС (акциз)": 0.0,
-                        "Себес (акциз)": 0.0,
-                        "Акциз (строка)": 0.0,
-                        "Маржа fallback": orig,
-                        "Маржа расчётная": orig,
-                        "Маржа в отчёте": adjusted_margins.get(int(idx), orig),
-                        "Метод": METHOD_FROM_SALES_NO_EXCISE,
-                    }
+                shop = _normalize_text(row.get(COL_SHOP, ""))
+                _append_sales_margin_audit_rows(
+                    rows,
+                    group=group.loc[[idx]],
+                    sku=sku,
+                    week=week,
+                    avg_margin=avg_margin,
+                    adjusted_margins=adjusted_margins,
+                    method=METHOD_FROM_SALES_NO_EXCISE,
+                    shop_buh_cost=_shop_cost(cost_df, shop, sku, week),
                 )
             continue
 
@@ -784,20 +849,125 @@ def build_liquid_margin_audit(
     return detail_df, summary_df
 
 
+def build_liquid_margin_category_summary(
+    sales_original: pd.DataFrame,
+    sales_adjusted: pd.DataFrame | None,
+    *,
+    lfl_week: int | None,
+    report_week: int | None,
+) -> pd.DataFrame:
+    """Сводка изменения маржи категории «Жидкость 25 мл» по неделям."""
+    from features.data_prep import filter_sales_by_report_week
+
+    columns = [
+        "Период",
+        "Неделя",
+        "Маржа из продаж (Qlik)",
+        "Маржа после пересчёта",
+        "Изменение маржи",
+    ]
+
+    def _liquid_margin_sum(df: pd.DataFrame | None, week: int) -> float:
+        if df is None or df.empty:
+            return 0.0
+        week_df = filter_sales_by_report_week(df, week)
+        if week_df.empty or COL_CATEGORY not in week_df.columns:
+            return 0.0
+        liquid = week_df.loc[
+            week_df[COL_CATEGORY].astype(str).str.strip() == CATEGORY_LIQUID_25ML
+        ]
+        if liquid.empty or COL_MARGIN not in liquid.columns:
+            return 0.0
+        return float(liquid[COL_MARGIN].sum())
+
+    rows: list[dict[str, float | int | str]] = []
+    for period, week in (("Отчётная", report_week), ("LFL", lfl_week)):
+        if week is None:
+            continue
+        week_int = int(week)
+        if period == "LFL" and report_week is not None and week_int == int(report_week):
+            continue
+        margin_sales = _liquid_margin_sum(sales_original, week_int)
+        margin_new = _liquid_margin_sum(
+            sales_adjusted if sales_adjusted is not None else sales_original,
+            week_int,
+        )
+        rows.append(
+            {
+                "Период": period,
+                "Неделя": week_int,
+                "Маржа из продаж (Qlik)": margin_sales,
+                "Маржа после пересчёта": margin_new,
+                "Изменение маржи": margin_new - margin_sales,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows)[columns]
+
+
 def export_liquid_margin_audit_bytes(
     detail_df: pd.DataFrame,
     summary_df: pd.DataFrame,
 ) -> bytes:
+    return export_liquid_margin_audit_workbook(
+        report_detail=detail_df,
+        report_summary=summary_df,
+    )
+
+
+def export_liquid_margin_audit_workbook(
+    *,
+    report_detail: pd.DataFrame | None = None,
+    report_summary: pd.DataFrame | None = None,
+    lfl_detail: pd.DataFrame | None = None,
+    lfl_summary: pd.DataFrame | None = None,
+    category_summary: pd.DataFrame | None = None,
+    lfl_week: int | None = None,
+    report_week: int | None = None,
+) -> bytes:
     buffer = BytesIO()
-    export_detail = detail_df.drop(columns=["_row_index"], errors="ignore")
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        export_detail.to_excel(writer, sheet_name="По строкам", index=False)
-        summary_df.to_excel(writer, sheet_name="По SKU", index=False)
+        if category_summary is not None and not category_summary.empty:
+            category_summary.to_excel(writer, sheet_name="Сводка маржи", index=False)
+
+        if report_detail is not None and not report_detail.empty:
+            sheet = (
+                f"Отчётная {report_week} — строки"
+                if report_week is not None
+                else "Отчётная — строки"
+            )
+            report_detail.drop(columns=["_row_index"], errors="ignore").to_excel(
+                writer, sheet_name=sheet[:31], index=False
+            )
+        if report_summary is not None and not report_summary.empty:
+            sheet = (
+                f"Отчётная {report_week} — SKU"
+                if report_week is not None
+                else "Отчётная — SKU"
+            )
+            report_summary.to_excel(writer, sheet_name=sheet[:31], index=False)
+
+        if lfl_detail is not None and not lfl_detail.empty:
+            sheet = f"LFL {lfl_week} — строки" if lfl_week is not None else "LFL — строки"
+            lfl_detail.drop(columns=["_row_index"], errors="ignore").to_excel(
+                writer, sheet_name=sheet[:31], index=False
+            )
+        if lfl_summary is not None and not lfl_summary.empty:
+            sheet = f"LFL {lfl_week} — SKU" if lfl_week is not None else "LFL — SKU"
+            lfl_summary.to_excel(writer, sheet_name=sheet[:31], index=False)
+
     return buffer.getvalue()
 
 
-def liquid_margin_audit_filename(report_week: int | None) -> str:
-    suffix = f"_неделя_{report_week}" if report_week is not None else ""
+def liquid_margin_audit_filename(report_week: int | None, lfl_week: int | None = None) -> str:
+    parts: list[str] = []
+    if report_week is not None:
+        parts.append(f"отч_{report_week}")
+    if lfl_week is not None:
+        parts.append(f"lfl_{lfl_week}")
+    suffix = f"_{'_'.join(parts)}" if parts else ""
     return f"Проверка_себестоимости_жидкость{suffix}.xlsx"
 
 
@@ -809,6 +979,7 @@ def recalculate_liquid_margins(
     *,
     lfl_week: int | None,
     report_week: int | None,
+    excise_from_sales_skus: frozenset[str] | None = None,
 ) -> pd.DataFrame:
     """
     Пересчитывает «Маржа» только для «Жидкость 25 мл».
@@ -822,6 +993,7 @@ def recalculate_liquid_margins(
         excise_report,
         lfl_week=lfl_week,
         report_week=report_week,
+        excise_from_sales_skus=excise_from_sales_skus,
     )
     if audit is None:
         return sales_df
@@ -840,7 +1012,7 @@ def recalculate_liquid_margins(
         return df
 
     for _, audit_row in detail_df.iterrows():
-        if audit_row["Метод"] in (METHOD_FROM_SALES_NO_COST, METHOD_FROM_SALES_NO_EXCISE):
+        if audit_row["Метод"] in _METHODS_FROM_SALES:
             continue
         row_idx = int(audit_row["_row_index"])
         if row_idx in df.index:

@@ -54,6 +54,8 @@ def render_global_metrics(
     liquid_audit_excise_lfl=None,
     liquid_audit_excise_report=None,
     liquid_audit_lfl_week: int | None = None,
+    liquid_audit_excise_from_sales_skus=None,
+    liquid_audit_sales_adjusted: pd.DataFrame | None = None,
 ):
     if df is None or df.empty:
         st.warning("Нет данных для отображения общих метрик.")
@@ -91,12 +93,13 @@ def render_global_metrics(
         with col_audit:
             render_liquid_margin_audit_block(
                 liquid_audit_sales_original,
-                df,
+                liquid_audit_sales_adjusted,
                 liquid_audit_cost,
                 liquid_audit_excise_lfl,
                 liquid_audit_excise_report,
                 lfl_week=liquid_audit_lfl_week,
                 report_week=report_week,
+                excise_from_sales_skus=liquid_audit_excise_from_sales_skus,
             )
 
     if turnover_table is None:
@@ -628,11 +631,14 @@ def render_liquid_margin_audit_block(
     *,
     lfl_week: int | None = None,
     report_week: int | None = None,
+    excise_from_sales_skus=None,
 ) -> None:
     """Кнопка скачивания Excel с детализацией расчёта маржи жидкости."""
+    from features.data_prep import filter_sales_by_report_week
     from features.liquid_margin import (
         build_liquid_margin_audit,
-        export_liquid_margin_audit_bytes,
+        build_liquid_margin_category_summary,
+        export_liquid_margin_audit_workbook,
         liquid_margin_audit_filename,
     )
 
@@ -644,30 +650,97 @@ def render_liquid_margin_audit_block(
         st.caption("Загрузите файл «Себестоимость жидкости».")
         return
 
-    audit = build_liquid_margin_audit(
-        sales_original,
-        sales_adjusted,
-        cost_df,
-        excise_lfl,
-        excise_report,
-        lfl_week=lfl_week,
-        report_week=report_week,
-    )
-    if audit is None:
+    def _week_sales(df: pd.DataFrame | None, week: int | None):
+        if df is None or df.empty or week is None:
+            return None
+        filtered = filter_sales_by_report_week(df, int(week))
+        return filtered if not filtered.empty else None
+
+    report_original = _week_sales(sales_original, report_week)
+    report_adjusted = _week_sales(sales_adjusted, report_week)
+    lfl_original = _week_sales(sales_original, lfl_week)
+    lfl_adjusted = _week_sales(sales_adjusted, lfl_week)
+
+    report_audit = None
+    if report_original is not None:
+        report_audit = build_liquid_margin_audit(
+            report_original,
+            report_adjusted if report_adjusted is not None else report_original,
+            cost_df,
+            excise_lfl,
+            excise_report,
+            lfl_week=lfl_week,
+            report_week=report_week,
+            excise_from_sales_skus=excise_from_sales_skus,
+        )
+
+    lfl_audit = None
+    if lfl_original is not None and lfl_week is not None and lfl_week != report_week:
+        lfl_audit = build_liquid_margin_audit(
+            lfl_original,
+            lfl_adjusted if lfl_adjusted is not None else lfl_original,
+            cost_df,
+            excise_lfl,
+            excise_report,
+            lfl_week=lfl_week,
+            report_week=report_week,
+            excise_from_sales_skus=excise_from_sales_skus,
+        )
+
+    if report_audit is None and lfl_audit is None:
         st.caption("Нет строк категории «Жидкость 25 мл» для проверки.")
         return
 
-    detail_df, summary_df = audit
-    diff_rows = int((detail_df["Маржа расчётная"] - detail_df["Маржа в отчёте"]).abs().gt(0.01).sum())
-    st.caption(
-        f"Строк: {len(detail_df)}, SKU: {len(summary_df)}"
-        + (f", расхождений: {diff_rows}" if diff_rows else "")
+    category_summary = build_liquid_margin_category_summary(
+        sales_original,
+        sales_adjusted,
+        lfl_week=lfl_week,
+        report_week=report_week,
     )
-    excel_bytes = export_liquid_margin_audit_bytes(detail_df, summary_df)
+
+    caption_parts: list[str] = []
+    if not category_summary.empty:
+        for _, row in category_summary.iterrows():
+            delta = float(row["Изменение маржи"])
+            sign = "−" if delta < 0 else "+"
+            caption_parts.append(
+                f"{row['Период']} (нед. {int(row['Неделя'])}): "
+                f"изменение маржи {sign}{abs(delta):,.2f}".replace(",", " ")
+            )
+    if report_audit is not None:
+        detail_df, summary_df = report_audit
+        diff_rows = int(
+            (detail_df["Маржа расчётная"] - detail_df["Маржа в отчёте"]).abs().gt(0.01).sum()
+        )
+        caption_parts.append(
+            f"Отчётная: строк {len(detail_df)}, SKU {len(summary_df)}"
+            + (f", расхождений {diff_rows}" if diff_rows else "")
+        )
+    if lfl_audit is not None:
+        lfl_detail, lfl_summary = lfl_audit
+        caption_parts.append(f"LFL: строк {len(lfl_detail)}, SKU {len(lfl_summary)}")
+
+    st.caption(" | ".join(caption_parts))
+
+    report_detail = report_summary = lfl_detail = lfl_summary = None
+    if report_audit is not None:
+        report_detail, report_summary = report_audit
+    if lfl_audit is not None:
+        lfl_detail, lfl_summary = lfl_audit
+
+    excel_bytes = export_liquid_margin_audit_workbook(
+        report_detail=report_detail,
+        report_summary=report_summary,
+        lfl_detail=lfl_detail,
+        lfl_summary=lfl_summary,
+        category_summary=category_summary,
+        lfl_week=lfl_week,
+        report_week=report_week,
+    )
     st.download_button(
         label="Скачать проверку в Excel",
         data=excel_bytes,
-        file_name=liquid_margin_audit_filename(report_week),
+        file_name=liquid_margin_audit_filename(report_week, lfl_week),
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="secondary",
         use_container_width=True,

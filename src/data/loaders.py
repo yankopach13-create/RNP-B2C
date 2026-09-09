@@ -38,6 +38,7 @@ class AppData:
     liquid_cost: Optional[pd.DataFrame]
     excise_liquid_lfl: Optional[pd.DataFrame]
     excise_liquid_report: Optional[pd.DataFrame]
+    excise_from_sales_skus: Optional[frozenset[str]]
     groups_order_rnp: Optional[list[str]]
     category_order_rnp: Optional[list[str]]
     category_order_general: Optional[list[str]]
@@ -52,6 +53,7 @@ _APP_DATA_OPTIONAL_FIELDS = (
     "liquid_cost",
     "excise_liquid_lfl",
     "excise_liquid_report",
+    "excise_from_sales_skus",
     "turnover_categories",
 )
 
@@ -79,6 +81,7 @@ def normalize_app_data(data: AppData | None) -> AppData | None:
         liquid_cost=getattr(data, "liquid_cost", None),
         excise_liquid_lfl=getattr(data, "excise_liquid_lfl", None),
         excise_liquid_report=getattr(data, "excise_liquid_report", None),
+        excise_from_sales_skus=getattr(data, "excise_from_sales_skus", None),
         groups_order_rnp=data.groups_order_rnp,
         category_order_rnp=data.category_order_rnp,
         category_order_general=data.category_order_general,
@@ -187,6 +190,7 @@ def _load_reference_batch() -> dict[str, pd.DataFrame]:
         refs.REF_CATEGORY_ORDER,
         refs.REF_FOCUS,
         refs.REF_TURNOVER_CATEGORIES,
+        refs.REF_EXCISE_FROM_SALES,
     ]
     try:
         return refs.load_all_references(keys)
@@ -251,6 +255,14 @@ def _turnover_categories_from_batch(
         return None
     categories = _column_names_from_reference(turnover_df, TURNOVER_CATEGORIES_COLUMN)
     return categories or None
+
+
+def _excise_from_sales_skus_from_batch(batch: dict[str, pd.DataFrame]) -> frozenset[str]:
+    from features.liquid_margin import parse_excise_from_sales_skus
+
+    refs = _references()
+    ref_df = batch.get(refs.REF_EXCISE_FROM_SALES)
+    return parse_excise_from_sales_skus(ref_df)
 
 
 def _column_names_from_reference(df: pd.DataFrame, column: str) -> list[str]:
@@ -320,6 +332,7 @@ def load_all_data(files) -> AppData:
     groups_order_rnp, shops_order = _groups_order_from_batch(ref_batch)
     category_order_rnp, category_order_general = _category_order_from_batch(ref_batch)
     turnover_categories = _turnover_categories_from_batch(ref_batch)
+    excise_from_sales_skus = _excise_from_sales_skus_from_batch(ref_batch)
 
     lfl_df = None
     if getattr(files, "lfl", None):
@@ -454,6 +467,7 @@ def load_all_data(files) -> AppData:
         liquid_cost=liquid_cost_df,
         excise_liquid_lfl=excise_lfl_df,
         excise_liquid_report=excise_report_df,
+        excise_from_sales_skus=excise_from_sales_skus,
         groups_order_rnp=groups_order_rnp,
         category_order_rnp=category_order_rnp,
         category_order_general=category_order_general,

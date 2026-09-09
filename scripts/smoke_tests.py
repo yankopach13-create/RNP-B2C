@@ -154,6 +154,7 @@ def test_normalize_app_data_legacy() -> None:
   _assert(migrated.liquid_cost is None, "liquid_cost default")
   _assert(migrated.excise_liquid_lfl is None, "excise_liquid_lfl default")
   _assert(migrated.excise_liquid_report is None, "excise_liquid_report default")
+  _assert(migrated.excise_from_sales_skus is None, "excise_from_sales_skus default")
 
 
 def test_hookah_sales_exact_match() -> None:
@@ -239,6 +240,7 @@ def test_excel_export_hookah_sheet() -> None:
         liquid_cost=None,
         excise_liquid_lfl=None,
         excise_liquid_report=None,
+        excise_from_sales_skus=None,
         groups_order_rnp=None,
         category_order_rnp=None,
         category_order_general=None,
@@ -535,6 +537,7 @@ def test_excel_export_consumables_sheet() -> None:
         liquid_cost=None,
         excise_liquid_lfl=None,
         excise_liquid_report=None,
+        excise_from_sales_skus=None,
         groups_order_rnp=None,
         category_order_rnp=None,
         category_order_general=None,
@@ -960,11 +963,76 @@ def test_liquid_margin_fallback_qty() -> None:
     _assert(abs(float(result["Маржа"].iloc[0]) - expected) < 0.02, "fallback 1 шт included")
 
 
+def test_parse_excise_from_sales_skus() -> None:
+    from features.liquid_margin import parse_excise_from_sales_skus
+
+    df = pd.DataFrame(
+        {
+            "Товар ур.4": [
+                "SKU-1",
+                "Жидкость test 25 мл РБ",
+                "",
+            ]
+        }
+    )
+    skus = parse_excise_from_sales_skus(df)
+    _assert(len(skus) == 2, "excise from sales sku count")
+    _assert("SKU-1" in skus, "excise from sales sku-1")
+    _assert("Жидкость test 25 мл" in skus, "excise from sales strip RB")
+
+
+def test_liquid_margin_ref_skips_recalculation() -> None:
+    from features.excise_liquid import CATEGORY_LIQUID_25ML
+    from features.liquid_margin import parse_liquid_cost, recalculate_liquid_margins
+
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Shop A", "Shop A"],
+            "Товар ур.4": ["SKU-REF", "SKU-CALC"],
+            "Неделя": [32, 32],
+            "Категория": [CATEGORY_LIQUID_25ML, CATEGORY_LIQUID_25ML],
+            "Количество": [10, 10],
+            "Продажи с НДС": [1000.0, 1000.0],
+            "Маржа": [200.0, 200.0],
+        }
+    )
+    cost = parse_liquid_cost(
+        pd.DataFrame(
+            {
+                "Склад": ["Shop A", "Shop A"],
+                "Товар4": ["SKU-REF", "SKU-CALC"],
+                "Год-Неделя": ["2026/32", "2026/32"],
+                "Продажи (Q)": [10, 10],
+                "Продажи (Σ)": [500.0, 500.0],
+            }
+        )
+    )
+    excise = pd.DataFrame(
+        {
+            "sku": ["SKU-REF", "SKU-CALC"],
+            "qty": [10.0, 10.0],
+            "excise_sum": [50.0, 50.0],
+        }
+    )
+    result = recalculate_liquid_margins(
+        sales.copy(),
+        cost,
+        excise,
+        excise,
+        lfl_week=32,
+        report_week=32,
+        excise_from_sales_skus=frozenset({"SKU-REF"}),
+    )
+    _assert(float(result.loc[result["Товар ур.4"] == "SKU-REF", "Маржа"].iloc[0]) == 200.0, "ref sku unchanged")
+    _assert(float(result.loc[result["Товар ур.4"] == "SKU-CALC", "Маржа"].iloc[0]) != 200.0, "calc sku changed")
+
+
 def test_liquid_margin_audit_export() -> None:
     from features.excise_liquid import CATEGORY_LIQUID_25ML
     from features.liquid_margin import (
         build_liquid_margin_audit,
-        export_liquid_margin_audit_bytes,
+        build_liquid_margin_category_summary,
+        export_liquid_margin_audit_workbook,
         parse_liquid_cost,
         recalculate_liquid_margins,
     )
@@ -1002,7 +1070,17 @@ def test_liquid_margin_audit_export() -> None:
     detail, summary = audit
     _assert(len(detail) == 1, "one audit row")
     _assert(len(summary) == 1, "one sku summary")
-    blob = export_liquid_margin_audit_bytes(detail, summary)
+    summary_margin = build_liquid_margin_category_summary(
+        sales, adjusted, lfl_week=32, report_week=32
+    )
+    _assert(len(summary_margin) == 1, "category summary one week")
+    blob = export_liquid_margin_audit_workbook(
+        report_detail=detail,
+        report_summary=summary,
+        category_summary=summary_margin,
+        report_week=32,
+        lfl_week=32,
+    )
     _assert(len(blob) > 100, "audit xlsx bytes")
 
 
@@ -1075,6 +1153,8 @@ OFFLINE_TESTS = [
     test_parse_excise_retail_block_lfl_no_writeoff,
     test_normalize_sku_strips_rb_st_suffixes,
     test_liquid_margin_matches_excise_with_rb_suffix,
+    test_parse_excise_from_sales_skus,
+    test_liquid_margin_ref_skips_recalculation,
     test_parse_liquid_cost_sum_column_aliases,
     test_liquid_margin_recalculation,
     test_liquid_margin_fallback_qty,
