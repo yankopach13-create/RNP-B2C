@@ -803,13 +803,23 @@ def _render_liquid_margin_audit_reference(
 
     margin_lines: list[str] = []
     if category_summary is not None and not category_summary.empty:
+        from features.liquid_margin import format_liquid_margin_pct
+
         for _, row in category_summary.iterrows():
-            delta = float(row["Изменение маржи"])
-            sign = "−" if delta < 0 else "+"
-            margin_lines.append(
+            pct_new = row.get("Маржа % (пересчёт)")
+            pct_qlik = row.get("Маржа % (Qlik)")
+            delta_pp = row.get("Изменение маржи, п.п.")
+            line = (
                 f"{row['Период']} (нед. {int(row['Неделя'])}): "
-                f"изменение маржи {sign}{abs(delta):,.2f}".replace(",", " ")
+                f"маржа {format_liquid_margin_pct(pct_new if pd.notna(pct_new) else None)}"
             )
+            if pct_qlik is not None and pd.notna(pct_qlik):
+                line += f", Qlik {format_liquid_margin_pct(float(pct_qlik))}"
+            if delta_pp is not None and pd.notna(delta_pp):
+                delta_pp = float(delta_pp)
+                sign = "−" if delta_pp < 0 else "+"
+                line += f" ({sign}{abs(delta_pp):.1f} п.п.)".replace(".", ",")
+            margin_lines.append(line)
 
     if margin_lines:
         has_content = True

@@ -869,6 +869,19 @@ def build_liquid_margin_audit(
     return detail_df, summary_df
 
 
+def liquid_category_margin_pct(margin: float, revenue_vat: float) -> float | None:
+    """Маржа % = маржа / (выручка с НДС / 1,2)."""
+    if revenue_vat == 0:
+        return None
+    return margin / (revenue_vat / VAT_NET_DIVISOR) * 100
+
+
+def format_liquid_margin_pct(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.1f}%".replace(".", ",")
+
+
 def build_liquid_margin_category_summary(
     sales_original: pd.DataFrame,
     sales_adjusted: pd.DataFrame | None,
@@ -882,26 +895,37 @@ def build_liquid_margin_category_summary(
     columns = [
         "Период",
         "Неделя",
+        "Выручка без НДС",
         "Маржа из продаж (Qlik)",
         "Маржа после пересчёта",
+        "Маржа % (Qlik)",
+        "Маржа % (пересчёт)",
         "Изменение маржи",
+        "Изменение маржи, п.п.",
     ]
 
-    def _liquid_margin_sum(df: pd.DataFrame | None, week: int) -> float:
+    def _liquid_week_df(df: pd.DataFrame | None, week: int) -> pd.DataFrame:
         if df is None or df.empty:
-            return 0.0
+            return pd.DataFrame()
         week_df = filter_sales_by_report_week(df, week)
         if week_df.empty or COL_CATEGORY not in week_df.columns:
-            return 0.0
-        liquid = week_df.loc[
+            return pd.DataFrame()
+        return week_df.loc[
             week_df[COL_CATEGORY].astype(str).str.strip() == CATEGORY_LIQUID_25ML
-        ]
+        ].copy()
+
+    def _liquid_margin_sum(liquid: pd.DataFrame) -> float:
         if liquid.empty or COL_MARGIN not in liquid.columns:
             return 0.0
         return float(liquid[COL_MARGIN].sum())
 
+    def _liquid_revenue_vat_sum(liquid: pd.DataFrame) -> float:
+        if liquid.empty or COL_REVENUE not in liquid.columns:
+            return 0.0
+        return float(liquid[COL_REVENUE].sum())
+
     report_week_int = safe_int_week(report_week)
-    rows: list[dict[str, float | int | str]] = []
+    rows: list[dict[str, float | int | str | None]] = []
     for period, week in (("Отчётная", report_week), ("LFL", lfl_week)):
         week_int = safe_int_week(week)
         if week_int is None:
@@ -912,18 +936,35 @@ def build_liquid_margin_category_summary(
             and week_int == report_week_int
         ):
             continue
-        margin_sales = _liquid_margin_sum(sales_original, week_int)
-        margin_new = _liquid_margin_sum(
+
+        liquid_original = _liquid_week_df(sales_original, week_int)
+        liquid_adjusted = _liquid_week_df(
             sales_adjusted if sales_adjusted is not None else sales_original,
             week_int,
         )
+        revenue_vat = _liquid_revenue_vat_sum(liquid_original)
+        revenue_net = revenue_vat / VAT_NET_DIVISOR if revenue_vat else 0.0
+        margin_sales = _liquid_margin_sum(liquid_original)
+        margin_new = _liquid_margin_sum(liquid_adjusted)
+        pct_qlik = liquid_category_margin_pct(margin_sales, revenue_vat)
+        pct_new = liquid_category_margin_pct(margin_new, revenue_vat)
+        delta_pp = (
+            pct_new - pct_qlik
+            if pct_new is not None and pct_qlik is not None
+            else None
+        )
+
         rows.append(
             {
                 "Период": period,
                 "Неделя": week_int,
+                "Выручка без НДС": revenue_net,
                 "Маржа из продаж (Qlik)": margin_sales,
                 "Маржа после пересчёта": margin_new,
+                "Маржа % (Qlik)": pct_qlik,
+                "Маржа % (пересчёт)": pct_new,
                 "Изменение маржи": margin_new - margin_sales,
+                "Изменение маржи, п.п.": delta_pp,
             }
         )
 

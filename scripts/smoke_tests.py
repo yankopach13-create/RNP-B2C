@@ -1135,6 +1135,10 @@ def test_liquid_margin_audit_export() -> None:
         sales, adjusted, lfl_week=32, report_week=32
     )
     _assert(len(summary_margin) == 1, "category summary one week")
+    row = summary_margin.iloc[0]
+    _assert(abs(float(row["Выручка без НДС"]) - 1000.0 / 1.2) < 0.01, "revenue net")
+    _assert(row["Маржа % (Qlik)"] is not None, "margin pct qlik")
+    _assert(row["Маржа % (пересчёт)"] is not None, "margin pct recalc")
     blob = export_liquid_margin_audit_workbook(
         report_detail=detail,
         report_summary=summary,
