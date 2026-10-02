@@ -193,7 +193,6 @@ def build_focus_display_df(
                 }
             )
             first = False
-        rows.append({"Показатель": "", "Фокусная позиция": "", "Продажи, шт.": ""})
 
     append_group_rows("Общие показатели", overall)
 
@@ -201,9 +200,6 @@ def build_focus_display_df(
         group_series = pivot.loc[group] if group in pivot.index else None
         if group_series is not None:
             append_group_rows(group, group_series)
-
-    if rows and all(value == "" for value in rows[-1].values()):
-        rows.pop()
 
     return pd.DataFrame(
         rows, columns=["Показатель", "Фокусная позиция", "Продажи, шт."]
