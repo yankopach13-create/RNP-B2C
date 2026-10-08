@@ -172,6 +172,17 @@ def fixed_width_table_html(
   border: 1px solid rgba(128, 128, 128, 0.35);
   border-radius: 8px;
   background: transparent;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+}}
+.rnp-fixed-table,
+.rnp-fixed-table table,
+.rnp-fixed-table th,
+.rnp-fixed-table td {{
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
 }}
 .rnp-fixed-table table {{
   table-layout: fixed;
@@ -188,6 +199,7 @@ def fixed_width_table_html(
   white-space: nowrap;
   line-height: 1.25;
   height: {row_height_px}px;
+  cursor: text;
 }}
 .rnp-fixed-table th {{
   position: sticky;
@@ -207,6 +219,42 @@ def fixed_width_table_html(
 </table>
 </div>
 """
+
+
+def render_fixed_width_table(
+    table: pd.DataFrame,
+    column_widths: dict[str, str],
+    *,
+    right_aligned: set[str] | frozenset[str] | None = None,
+    visible_rows: int = STACKED_ORDER_TABLE_VISIBLE_ROWS,
+    row_height_px: int = FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    header_height_px: int = FINANCIAL_TABLE_HEADER_HEIGHT_PX,
+) -> None:
+    """Показать таблицу с фиксированными колонками; текст в ячейках можно выделять и копировать."""
+    import streamlit as st
+
+    markup = fixed_width_table_html(
+        table,
+        column_widths,
+        right_aligned=right_aligned,
+        visible_rows=visible_rows,
+        row_height_px=row_height_px,
+        header_height_px=header_height_px,
+    )
+    # st.html не оборачивает разметку в markdown-контейнер, где Streamlit глушит выделение.
+    html_fn = getattr(st, "html", None)
+    if callable(html_fn):
+        html_fn(markup)
+        return
+    st.markdown(
+        "<style>"
+        '[data-testid="stMarkdownContainer"] .rnp-fixed-table,'
+        '[data-testid="stMarkdownContainer"] .rnp-fixed-table * {'
+        "user-select:text !important;-webkit-user-select:text !important;"
+        "}</style>"
+        + markup,
+        unsafe_allow_html=True,
+    )
 
 
 def compact_dataframe_layout_css() -> str:

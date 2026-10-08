@@ -31,8 +31,8 @@ from features.consumables_nesting import (
 from features.table_layout import (
     STACKED_ORDER_NAME_COL,
     STACKED_ORDER_TABLE_VISIBLE_ROWS,
-    fixed_width_table_html,
     merge_named_metric_tables,
+    render_fixed_width_table,
     stack_named_metric_tables,
 )
 
@@ -164,16 +164,13 @@ def _render_nesting_and_pct_block_impl(
 
 
 def _render_table(table: pd.DataFrame) -> None:
-    st.markdown(
-        fixed_width_table_html(
-            table,
-            {
-                STACKED_ORDER_NAME_COL: "32%",
-                COL_NESTING: "30%",
-                COL_PCT_NO_BK: "38%",
-            },
-            right_aligned={COL_NESTING, COL_PCT_NO_BK},
-            visible_rows=STACKED_ORDER_TABLE_VISIBLE_ROWS,
-        ),
-        unsafe_allow_html=True,
+    render_fixed_width_table(
+        table,
+        {
+            STACKED_ORDER_NAME_COL: "32%",
+            COL_NESTING: "30%",
+            COL_PCT_NO_BK: "38%",
+        },
+        right_aligned={COL_NESTING, COL_PCT_NO_BK},
+        visible_rows=STACKED_ORDER_TABLE_VISIBLE_ROWS,
     )

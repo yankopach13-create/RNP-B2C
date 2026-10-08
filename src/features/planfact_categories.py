@@ -16,7 +16,7 @@ from features.metrics import (
 from features.reference_orders import resolve_groups_order, resolve_shops_order
 from features.table_layout import (
     STACKED_ORDER_TABLE_VISIBLE_ROWS,
-    fixed_width_table_html,
+    render_fixed_width_table,
 )
 
 COL_GROUP = "Группа"
@@ -130,14 +130,11 @@ def render_planfact_categories_block(
         st.info("Нет данных для план-факта категорий.")
         return
 
-    st.markdown(
-        fixed_width_table_html(
-            table,
-            _planfact_column_widths(table),
-            right_aligned=_planfact_right_aligned(table),
-            visible_rows=STACKED_ORDER_TABLE_VISIBLE_ROWS,
-        ),
-        unsafe_allow_html=True,
+    render_fixed_width_table(
+        table,
+        _planfact_column_widths(table),
+        right_aligned=_planfact_right_aligned(table),
+        visible_rows=STACKED_ORDER_TABLE_VISIBLE_ROWS,
     )
 
 
