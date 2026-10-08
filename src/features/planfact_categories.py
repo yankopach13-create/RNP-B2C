@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from config.constants import CATEGORY_COLUMN_GENERAL
 from features.categories import apply_category_reference
 from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
@@ -27,7 +28,8 @@ _SHOP_COL_WIDTH_PX = 140
 _WEEK_COL_WIDTH_PX = 72
 _CATEGORY_COL_WIDTH_PX = 96
 
-# Колонка в таблице → категории из справочника РНП (столбец «Категория»).
+# Колонка в таблице → ключи категории.
+# Уголь, аксессуары и кальяны в справочнике лежат как «Прочие товары/<правая часть>».
 PLANFACT_CATEGORY_COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ОЭС 2 мл", ("ОЭС 2 мл",)),
     ("ОЭС 4 мл", ("ОЭС 4 мл",)),
@@ -39,21 +41,28 @@ PLANFACT_CATEGORY_COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Карт. с жидк.", ("Картриджи с жидкостью",)),
     ("Паучи", ("Никотиновые паучи",)),
     ("БКС и ТКС", ("Кальянные смеси", "БКС")),
-    ("Уголь", ("Уголь",)),
-    ("Аксессуары", ("Аксессуары",)),
-    ("Кальяны", ("Кальяны", "Кальян")),
+    ("Уголь", ("Прочие товары/Уголь", "Уголь")),
+    ("Аксессуары", ("Прочие товары/Аксессуары", "Аксессуары")),
+    ("Кальяны", ("Прочие товары/Кальян", "Кальяны", "Кальян")),
     (
         "Прочие",
         (
-            "Прочие товары",
-            "Закрытая под-система",
-            "Oxva stick",
-            "oxva stick картриджи",
+            "Прочие товары/Прочие товары",
             "OXVA Stick",
             "OXVA Stick картриджи",
         ),
     ),
 )
+
+_RNP_OTHER = "прочие товары"
+# Правая часть пары «Прочие товары/…» → ключ колонки план-факта.
+_OTHER_GENERAL_KEYS = {
+    "уголь": "прочие товары/уголь",
+    "аксессуары": "прочие товары/аксессуары",
+    "кальян": "прочие товары/кальян",
+    "кальяны": "прочие товары/кальян",
+    "прочие товары": "прочие товары/прочие товары",
+}
 
 
 def _norm_category_key(value: object) -> str:
@@ -62,6 +71,15 @@ def _norm_category_key(value: object) -> str:
 
 def _category_alias_keys(aliases: tuple[str, ...]) -> frozenset[str]:
     return frozenset(_norm_category_key(name) for name in aliases if str(name).strip())
+
+
+def _planfact_match_key(rnp: object, general: object) -> str:
+    """Ключ сопоставления: для «Прочие товары/…» берём правую часть справочника."""
+    rnp_key = _norm_category_key(rnp)
+    general_key = _norm_category_key(general)
+    if rnp_key == _RNP_OTHER and general_key in _OTHER_GENERAL_KEYS:
+        return _OTHER_GENERAL_KEYS[general_key]
+    return rnp_key
 
 
 def build_planfact_categories_table(
@@ -196,8 +214,15 @@ def _qty_by_shop_and_category(
     if df is None or df.empty:
         return {}
     work = df[[COL_SHOP, "Категория", COL_QTY]].copy()
+    if CATEGORY_COLUMN_GENERAL in df.columns:
+        general = df[CATEGORY_COLUMN_GENERAL]
+    else:
+        general = pd.Series("", index=df.index)
     work["_shop"] = work[COL_SHOP].map(_normalize_shop_key)
-    work["_cat"] = work["Категория"].map(_norm_category_key)
+    work["_cat"] = [
+        _planfact_match_key(rnp, gen)
+        for rnp, gen in zip(work["Категория"].tolist(), general.tolist())
+    ]
     work[COL_QTY] = pd.to_numeric(work[COL_QTY], errors="coerce").fillna(0.0)
     work = work.loc[work["_shop"].ne("") & work["_cat"].ne("")]
     if work.empty:

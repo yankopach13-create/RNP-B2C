@@ -543,16 +543,30 @@ def test_consumables_nesting_values() -> None:
 def test_planfact_categories_table() -> None:
     sales = pd.DataFrame(
         {
-            "Магазин": ["Гиппо Рокоссовского"] * 6,
+            "Магазин": ["Гиппо Рокоссовского"] * 9,
             "Категория": [
                 "ОЭС 2 мл",
                 "БКС",
                 "Кальянные смеси",
+                "Прочие товары",
+                "Прочие товары",
+                "Прочие товары",
+                "Прочие товары",
+                "OXVA Stick",
                 "Закрытая под-система",
+            ],
+            "Категория товара Общий РНП:": [
+                "",
+                "",
+                "",
+                "Аксессуары",
                 "Кальян",
                 "Уголь",
+                "Прочие товары",
+                "",
+                "",
             ],
-            "Количество": [140, 8, 12, 70, 5, 50],
+            "Количество": [140, 8, 12, 3, 5, 50, 9, 4, 70],
         }
     )
     groups = pd.DataFrame(
@@ -572,7 +586,8 @@ def test_planfact_categories_table() -> None:
     _assert(str(row["Неделя"]) == "40", "week")
     _assert(row["ОЭС 2 мл"] == "140", "oes 2")
     _assert(row["БКС и ТКС"] == "20", "hookah mixes")
-    _assert(row["Прочие"] == "70", "other closed pods")
+    _assert(row["Прочие"] == "13", "other plus oxva")
+    _assert(row["Аксессуары"] == "3", "accessories from other pair")
     _assert(row["Кальяны"] == "5", "hookah devices")
     _assert(row["Уголь"] == "50", "coal")
     _assert(row["Поды"] == "0", "empty pods")
