@@ -24,7 +24,7 @@ from features.data_prep import (
     sales_week_numbers,
 )
 from features.clients import render_client_block
-from features.lfl import build_lfl_factor_table, render_lfl_block
+from features.lfl import render_lfl_block
 from features.hookah_products import render_hookah_products_block
 from features.consumables_nesting import render_consumables_nesting_block
 from features.metrics import (
@@ -604,7 +604,7 @@ def _render_shop_economy_and_lfl(
     *,
     week_config: WeekCalculationConfig | None = None,
 ) -> None:
-    """План-факт магазины, факторный анализ, кальян, вложенность расходников и % без БК."""
+    """План-факт и кальян в узких колонках, факторный анализ на всю ширину."""
     has_shop = sales_df is not None and not sales_df.empty
     has_lfl = data.lfl is not None
     if not has_shop and not has_lfl:
@@ -612,24 +612,8 @@ def _render_shop_economy_and_lfl(
         return
 
     st.divider()
-    # План-факт уже двухколоночный: узкая колонка, справа кальян, далее факторный анализ.
-    col_shop, col_hookah, col_lfl = st.columns([0.82, 1.15, 1.9], gap="medium")
-
-    lfl_table = None
-    lfl_df = get_lfl_with_liquid_margins(data, week_config)
-    if has_lfl:
-        lfl_table = build_lfl_factor_table(
-            lfl_df,
-            data.categories,
-            lfl_week,
-            report_week,
-            data.category_order_rnp,
-        )
-    paired_table_height = (
-        _full_table_height(len(lfl_table))
-        if lfl_table is not None and not lfl_table.empty
-        else None
-    )
+    # План-факт и узкий кальян слева; остаток ряда пустой, чтобы кальян не растягивался.
+    col_shop, col_hookah, _col_spacer = st.columns([0.78, 0.92, 2.2], gap="medium")
 
     with col_shop:
         st.markdown("**План-факт магазины**")
@@ -641,13 +625,10 @@ def _render_shop_economy_and_lfl(
                 data.groups,
             )
             if not shop_table.empty:
-                shop_table_height = paired_table_height or _full_table_height(
-                    len(shop_table)
-                )
                 render_shop_economy_dataframe(
                     shop_table,
                     shop_row_kinds,
-                    height=shop_table_height,
+                    height=_full_table_height(len(shop_table)),
                 )
             else:
                 st.info("Нет данных по магазинам.")
@@ -657,24 +638,22 @@ def _render_shop_economy_and_lfl(
     with col_hookah:
         _render_hookah_products(data, sales_df, report_week)
 
-    with col_lfl:
-        if has_lfl:
-            render_lfl_block(
-                lfl_df,
-                data.categories,
-                lfl_week,
-                report_week,
-                data.category_order_rnp,
-                embedded=True,
-                prebuilt_table=lfl_table,
-                table_height=paired_table_height,
-            )
-        else:
-            st.markdown("**Факторный анализ**")
-            st.info(
-                "Нет данных для факторного анализа "
-                "(загрузите продажи с колонкой «Неделя» или отдельный файл)."
-            )
+    lfl_df = get_lfl_with_liquid_margins(data, week_config)
+    if has_lfl:
+        render_lfl_block(
+            lfl_df,
+            data.categories,
+            lfl_week,
+            report_week,
+            data.category_order_rnp,
+            embedded=True,
+        )
+    else:
+        st.markdown("**Факторный анализ**")
+        st.info(
+            "Нет данных для факторного анализа "
+            "(загрузите продажи с колонкой «Неделя» или отдельный файл)."
+        )
 
     _render_hookah_and_checks_no_bk(
         data,
