@@ -51,6 +51,7 @@ from features.reference_update import (  # noqa: E402
     category_triple_keys_set,
 )
 from features.metrics import _build_shop_economy_table  # noqa: E402
+from features.planfact_categories import build_planfact_categories_table  # noqa: E402
 from features.turnover import prepare_turnover_table  # noqa: E402
 
 
@@ -511,6 +512,44 @@ def test_consumables_nesting_values() -> None:
     _assert(excel_table is not None, "excel table")
     _assert(STACKED_ORDER_NAME_COL in excel_table.columns, "name col")
     _assert(COL_NESTING in excel_table.columns, "nesting col")
+
+
+def test_planfact_categories_table() -> None:
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Гиппо Рокоссовского"] * 6,
+            "Категория": [
+                "ОЭС 2 мл",
+                "БКС",
+                "Кальянные смеси",
+                "Закрытая под-система",
+                "Кальян",
+                "Уголь",
+            ],
+            "Количество": [140, 8, 12, 70, 5, 50],
+        }
+    )
+    groups = pd.DataFrame(
+        {"Магазин": ["Гиппо Рокоссовского"], "Группа": ["Восток"]}
+    )
+    table = build_planfact_categories_table(
+        sales,
+        groups,
+        ["Гиппо Рокоссовского"],
+        ["Восток"],
+        40,
+    )
+    _assert(len(table) == 1, "one shop row")
+    row = table.iloc[0]
+    _assert(row["Группа"] == "Восток", "group")
+    _assert(row["Магазин"] == "Гиппо Рокоссовского", "shop")
+    _assert(str(row["Неделя"]) == "40", "week")
+    _assert(row["ОЭС 2 мл"] == "140", "oes 2")
+    _assert(row["БКС и ТКС"] == "20", "hookah mixes")
+    _assert(row["Прочие"] == "70", "other closed pods")
+    _assert(row["Кальяны"] == "5", "hookah devices")
+    _assert(row["Уголь"] == "50", "coal")
+    _assert(row["Поды"] == "0", "empty pods")
 
 
 def test_excel_export_consumables_sheet() -> None:
@@ -1220,6 +1259,7 @@ OFFLINE_TESTS = [
     test_checks_no_bk_pcts,
     test_consumables_nesting_values,
     test_excel_export_consumables_sheet,
+    test_planfact_categories_table,
     test_turnover_by_level4,
     test_turnover_level4_fallback_u3,
     test_turnover_legacy_level3,

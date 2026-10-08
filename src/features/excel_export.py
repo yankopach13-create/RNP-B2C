@@ -33,6 +33,7 @@ from features.consumables_nesting import (
     load_pct_no_bk_reference,
 )
 from features.lfl import build_lfl_factor_table
+from features.planfact_categories import build_planfact_categories_table
 from features.metrics import (
     _build_category_sales_general_rows,
     _build_category_sales_group_rows,
@@ -314,6 +315,23 @@ def collect_rnp_b2c_sheets(
                 )
             )
 
+    if df_report is not None:
+        planfact_table = build_planfact_categories_table(
+            df_report,
+            data.groups,
+            data.shops_order,
+            data.groups_order_rnp,
+            report_week,
+            data.categories,
+        )
+        if planfact_table is not None and not planfact_table.empty:
+            sheets.append(
+                ExcelSheetSpec(
+                    name="План факт категории",
+                    table=_prepare_table_for_excel(planfact_table),
+                )
+            )
+
     return sheets
 
 
@@ -424,12 +442,21 @@ def _style_worksheet(
             cell.border = THIN_BORDER
 
             header = str(df.columns[col_idx - 1])
-            if col_idx == ncols or header in (
-                "Значение",
-                "Продажи, шт.",
-                "Продажи с НДС",
-                "Накопительно",
-            ) or header.startswith("Неделя "):
+            if (
+                col_idx == ncols
+                or header in (
+                    "Значение",
+                    "Продажи, шт.",
+                    "Продажи с НДС",
+                    "Накопительно",
+                    "Неделя",
+                )
+                or header.startswith("Неделя ")
+                or (
+                    sheet_name == "План факт категории"
+                    and header not in ("Группа", "Магазин")
+                )
+            ):
                 cell.alignment = RIGHT
             else:
                 cell.alignment = LEFT

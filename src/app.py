@@ -40,6 +40,7 @@ from features.excel_export import rnp_b2c_excel_filename
 from features.ai_report import render_ai_report_b2c
 from features.general_rnp import render_general_rnp_b2c
 from features.checks_no_bk import render_checks_no_bk_block
+from features.planfact_categories import render_planfact_categories_block
 from ui.data_session import (
     DOWNLOAD_RNP_EXCEL_KEY,
     get_cached_excel_bytes,
@@ -573,11 +574,11 @@ def _render_hookah_and_checks_no_bk(
     *,
     include_hookah: bool = True,
 ) -> None:
-    """Кальянная продукция, вложенность расходников и % чеков без БК."""
+    """Кальян, вложенность расходников, % без БК и план-факт категорий."""
     st.divider()
     if include_hookah:
         _render_hookah_products(data, sales_df, report_week)
-    col_nesting, col_no_bk = st.columns([1, 1], gap="medium")
+    col_nesting, col_no_bk, col_planfact = st.columns([0.85, 0.85, 2.3], gap="small")
     with col_nesting:
         render_consumables_nesting_block(
             upload_df=getattr(data, "consumables_nesting", None),
@@ -588,6 +589,16 @@ def _render_hookah_and_checks_no_bk(
         render_checks_no_bk_block(
             upload_df=getattr(data, "checks_no_bk", None),
             groups_df=data.groups,
+            embedded=True,
+        )
+    with col_planfact:
+        render_planfact_categories_block(
+            sales_df=sales_df,
+            groups_df=data.groups,
+            shops_order=data.shops_order,
+            groups_order_rnp=data.groups_order_rnp,
+            categories_df=data.categories,
+            report_week=report_week,
             embedded=True,
         )
 
