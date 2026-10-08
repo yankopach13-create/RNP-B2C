@@ -7,7 +7,12 @@ import re
 
 import streamlit as st
 
-from data.references import get_sheets_connection_message, sheets_configured
+from data.references import (
+    REF_PCT_NO_BK,
+    get_sheets_connection_message,
+    load_reference,
+    sheets_configured,
+)
 from features.categories import (
     category_pair_label,
     format_category_pair,
@@ -210,6 +215,22 @@ def _render_new_category_fields(
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+def _new_sellers_from_upload(upload_df) -> list[str]:
+    """Кассиры из файла «% чеков без БК», которых нет в справочнике %_bk."""
+    if upload_df is None or getattr(upload_df, "empty", True):
+        return []
+    from features.checks_no_bk import collect_new_sellers
+
+    try:
+        reference_df = load_reference(REF_PCT_NO_BK)
+    except Exception:  # noqa: BLE001
+        reference_df = None
+    try:
+        return collect_new_sellers(upload_df, reference_df)
+    except ValueError:
+        return []
+
+
 def render_quick_reference_update(
     new_shops: list[str],
     unmatched_products: list[UnmatchedProductGroup],
@@ -219,8 +240,12 @@ def render_quick_reference_update(
     category_order_rnp: list[str] | None = None,
     category_order_general: list[str] | None = None,
     new_sellers: list[str] | None = None,
+    checks_no_bk_df=None,
 ) -> None:
-    new_sellers = list(new_sellers or [])
+    if new_sellers is None:
+        new_sellers = _new_sellers_from_upload(checks_no_bk_df)
+    else:
+        new_sellers = list(new_sellers)
     if not new_shops and not unmatched_products and not new_sellers:
         return
 
