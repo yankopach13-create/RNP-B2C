@@ -37,28 +37,90 @@ def compact_dataframe_kwargs(**extra) -> dict:
 def stack_named_metric_tables(
     tables: list[pd.DataFrame],
     *,
-    value_column: str,
+    value_column: str | tuple[str, ...] | list[str],
     name_column: str = STACKED_ORDER_NAME_COL,
 ) -> pd.DataFrame:
     """Склеить секции в одну таблицу, разделяя пустой строкой."""
+    value_columns = (
+        (value_column,) if isinstance(value_column, str) else tuple(value_column)
+    )
     frames: list[pd.DataFrame] = []
-    blank = pd.DataFrame({name_column: [""], value_column: [""]})
+    blank = pd.DataFrame(
+        {name_column: [""], **{column: [""] for column in value_columns}}
+    )
     for table in tables:
         if table is None or table.empty:
             continue
         first_col = str(table.columns[0])
         chunk = table.rename(columns={first_col: name_column})
-        if value_column not in chunk.columns:
+        missing = [column for column in value_columns if column not in chunk.columns]
+        if missing:
             continue
-        chunk = chunk[[name_column, value_column]].copy()
+        chunk = chunk[[name_column, *value_columns]].copy()
         chunk[name_column] = chunk[name_column].fillna("").astype(str)
-        chunk[value_column] = chunk[value_column].fillna("").astype(str)
+        for column in value_columns:
+            chunk[column] = chunk[column].fillna("").astype(str)
         if frames:
             frames.append(blank)
         frames.append(chunk.reset_index(drop=True))
     if not frames:
-        return pd.DataFrame(columns=[name_column, value_column])
+        return pd.DataFrame(columns=[name_column, *value_columns])
     return pd.concat(frames, ignore_index=True)
+
+
+def merge_named_metric_tables(
+    left: pd.DataFrame | None,
+    right: pd.DataFrame | None,
+    *,
+    left_value: str,
+    right_value: str,
+    name_column: str = STACKED_ORDER_NAME_COL,
+) -> pd.DataFrame:
+    """Свести две таблицы порядка в Название + два показателя."""
+
+    def _prep(table: pd.DataFrame | None, value: str) -> pd.DataFrame:
+        if table is None or table.empty:
+            return pd.DataFrame(columns=[name_column, value])
+        first_col = str(table.columns[0])
+        chunk = table.rename(columns={first_col: name_column})
+        if value not in chunk.columns:
+            chunk[value] = ""
+        out = chunk[[name_column, value]].copy()
+        out[name_column] = out[name_column].fillna("").astype(str)
+        out[value] = out[value].fillna("").astype(str)
+        return out.reset_index(drop=True)
+
+    left_df = _prep(left, left_value)
+    right_df = _prep(right, right_value)
+    empty = pd.DataFrame(columns=[name_column, left_value, right_value])
+    if left_df.empty and right_df.empty:
+        return empty
+    if left_df.empty:
+        right_df[left_value] = ""
+        return right_df[[name_column, left_value, right_value]]
+    if right_df.empty:
+        left_df[right_value] = ""
+        return left_df[[name_column, left_value, right_value]]
+    if (
+        len(left_df) == len(right_df)
+        and left_df[name_column].tolist() == right_df[name_column].tolist()
+    ):
+        out = left_df.copy()
+        out[right_value] = right_df[right_value].to_numpy()
+        return out[[name_column, left_value, right_value]]
+
+    right_map = dict(zip(right_df[name_column], right_df[right_value]))
+    out = left_df.copy()
+    out[right_value] = out[name_column].map(lambda name: right_map.get(name, ""))
+    used = set(out[name_column].tolist())
+    extra = right_df.loc[~right_df[name_column].isin(used)].copy()
+    if not extra.empty:
+        extra[left_value] = ""
+        out = pd.concat(
+            [out, extra[[name_column, left_value, right_value]]],
+            ignore_index=True,
+        )
+    return out[[name_column, left_value, right_value]]
 
 
 def compact_dataframe_layout_css() -> str:

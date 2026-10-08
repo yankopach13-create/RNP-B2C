@@ -26,7 +26,7 @@ from features.data_prep import (
 from features.clients import render_client_block
 from features.lfl import build_lfl_factor_table, render_lfl_block
 from features.hookah_products import render_hookah_products_block
-from features.consumables_nesting import render_consumables_nesting_block
+from features.nesting_and_pct import render_nesting_and_pct_block
 from features.metrics import (
     render_financial_metrics_table,
     render_global_metrics,
@@ -39,7 +39,6 @@ from features.excise_liquid import WeekCalculationConfig
 from features.excel_export import rnp_b2c_excel_filename
 from features.ai_report import render_ai_report_b2c
 from features.general_rnp import render_general_rnp_b2c
-from features.checks_no_bk import render_checks_no_bk_block
 from features.planfact_categories import render_planfact_categories_block
 from ui.data_session import (
     DOWNLOAD_RNP_EXCEL_KEY,
@@ -574,20 +573,15 @@ def _render_hookah_and_checks_no_bk(
     *,
     include_hookah: bool = True,
 ) -> None:
-    """Кальян, вложенность расходников, % без БК и план-факт категорий."""
+    """Кальян, вложенность и % без БК, план-факт категорий."""
     st.divider()
     if include_hookah:
         _render_hookah_products(data, sales_df, report_week)
-    col_nesting, col_no_bk, col_planfact = st.columns([0.85, 0.85, 2.3], gap="small")
-    with col_nesting:
-        render_consumables_nesting_block(
-            upload_df=getattr(data, "consumables_nesting", None),
-            groups_df=data.groups,
-            embedded=True,
-        )
-    with col_no_bk:
-        render_checks_no_bk_block(
-            upload_df=getattr(data, "checks_no_bk", None),
+    col_combo, col_planfact = st.columns([1, 3.4], gap="small")
+    with col_combo:
+        render_nesting_and_pct_block(
+            nesting_upload=getattr(data, "consumables_nesting", None),
+            no_bk_upload=getattr(data, "checks_no_bk", None),
             groups_df=data.groups,
             embedded=True,
         )

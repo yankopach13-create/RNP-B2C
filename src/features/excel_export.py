@@ -28,10 +28,8 @@ from features.excise_liquid import WeekCalculationConfig
 from features.liquid_margin import recalculate_liquid_margins
 from features.focus import build_focus_display_df
 from features.hookah_products import build_hookah_products_table
-from features.consumables_nesting import (
-    build_consumables_nesting_excel_table,
-    load_pct_no_bk_reference,
-)
+from features.consumables_nesting import load_pct_no_bk_reference
+from features.nesting_and_pct import BLOCK_TITLE as NESTING_PCT_SHEET, build_nesting_and_pct_table
 from features.lfl import build_lfl_factor_table
 from features.planfact_categories import build_planfact_categories_table
 from features.metrics import (
@@ -300,18 +298,20 @@ def collect_rnp_b2c_sheets(
                 )
             )
 
-    upload_df = getattr(data, "consumables_nesting", None)
-    if upload_df is not None:
-        nesting_table = build_consumables_nesting_excel_table(
+    nesting_upload = getattr(data, "consumables_nesting", None)
+    no_bk_upload = getattr(data, "checks_no_bk", None)
+    if nesting_upload is not None or no_bk_upload is not None:
+        nesting_pct_table = build_nesting_and_pct_table(
             reference_df=load_pct_no_bk_reference(),
-            upload_df=upload_df,
+            nesting_upload=nesting_upload,
+            no_bk_upload=no_bk_upload,
             groups_df=data.groups,
         )
-        if nesting_table is not None and not nesting_table.empty:
+        if nesting_pct_table is not None and not nesting_pct_table.empty:
             sheets.append(
                 ExcelSheetSpec(
-                    name="Вложенность расходников",
-                    table=_prepare_table_for_excel(nesting_table),
+                    name=NESTING_PCT_SHEET,
+                    table=_prepare_table_for_excel(nesting_pct_table),
                 )
             )
 
@@ -450,6 +450,8 @@ def _style_worksheet(
                     "Продажи с НДС",
                     "Накопительно",
                     "Неделя",
+                    "Вложенность",
+                    "% без БК",
                 )
                 or header.startswith("Неделя ")
                 or (
@@ -480,7 +482,7 @@ def _style_worksheet(
             elif sheet_name in (
                 "Клиентский блок",
                 "Кальянная продукция",
-                "Вложенность расходников",
+                NESTING_PCT_SHEET,
             ) and col_idx == 1 and str(value).strip():
                 cell.font = BOLD_FONT
             else:

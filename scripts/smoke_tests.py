@@ -29,6 +29,7 @@ from features.data_prep import collect_new_shops, collect_unmatched_products  # 
 from features.hookah_products import build_hookah_products_table  # noqa: E402
 from features.ai_report import ai_category_metric_rows, build_ai_report_table  # noqa: E402
 from features.checks_no_bk import (  # noqa: E402
+    COL_PCT_NO_BK,
     build_checks_no_bk_table,
     build_groups_no_bk_table,
     build_sellers_no_bk_table,
@@ -52,6 +53,7 @@ from features.reference_update import (  # noqa: E402
 )
 from features.metrics import _build_shop_economy_table  # noqa: E402
 from features.planfact_categories import build_planfact_categories_table  # noqa: E402
+from features.nesting_and_pct import build_nesting_and_pct_table  # noqa: E402
 from features.turnover import prepare_turnover_table  # noqa: E402
 
 
@@ -256,7 +258,7 @@ def test_excel_export_hookah_sheet() -> None:
     names = [spec.name for spec in sheets]
     _assert("Кальянная продукция" in names, "hookah sheet")
     _assert("Fill free" not in names, "no fill free sheet")
-    _assert("Вложенность расходников" not in names, "no nesting sheet without file")
+    _assert("Вложенность и % без БК" not in names, "no nesting sheet without file")
 
 
 def test_mutate_categories_add_product() -> None:
@@ -512,6 +514,30 @@ def test_consumables_nesting_values() -> None:
     _assert(excel_table is not None, "excel table")
     _assert(STACKED_ORDER_NAME_COL in excel_table.columns, "name col")
     _assert(COL_NESTING in excel_table.columns, "nesting col")
+    no_bk_upload = pd.DataFrame(
+        {
+            "Магазин": ["Магазин A", "Магазин A", "Магазин B", "Магазин B"],
+            "Кассир": ["Иванов", "Иванов", "Петров", "Петров"],
+            "количество чеков": [10, 5, 8, 2],
+            "Код клиента": ["123", "", "456", ""],
+        }
+    )
+    combined = build_nesting_and_pct_table(ref, upload, no_bk_upload, groups)
+    _assert(
+        combined[STACKED_ORDER_NAME_COL].tolist()
+        == ["Восток", "Юг", "", "Магазин A", "Магазин B", "", "Иванов", "Петров"],
+        "combined stacked order",
+    )
+    _assert(
+        combined.loc[combined[STACKED_ORDER_NAME_COL] == "Иванов", COL_NESTING].iloc[0]
+        == "0,600",
+        "combined nesting",
+    )
+    _assert(
+        combined.loc[combined[STACKED_ORDER_NAME_COL] == "Магазин B", COL_PCT_NO_BK].iloc[0]
+        == "20,0%",
+        "combined pct",
+    )
 
 
 def test_planfact_categories_table() -> None:
@@ -608,7 +634,7 @@ def test_excel_export_consumables_sheet() -> None:
     finally:
         excel_export.load_pct_no_bk_reference = original
     names = [spec.name for spec in sheets]
-    _assert("Вложенность расходников" in names, "nesting sheet")
+    _assert("Вложенность и % без БК" in names, "nesting sheet")
 
 
 def test_turnover_by_level4() -> None:
