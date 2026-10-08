@@ -25,6 +25,7 @@ COL_QTY = "Количество"
 
 _NAME_COL_WIDTH_PX = 88
 _WEEK_COL_WIDTH_PX = 40
+_CATEGORY_COL_WIDTH_PX = 70
 
 # Колонка в таблице → категории из справочника РНП (столбец «Категория»).
 PLANFACT_CATEGORY_COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -135,16 +136,24 @@ def render_planfact_categories_block(
         hide_index=True,
         height=_financial_dataframe_height(STACKED_ORDER_TABLE_VISIBLE_ROWS),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
-        column_config=_column_config(),
+        column_config=_column_config(table),
     )
 
 
-def _column_config() -> dict:
-    return {
+def _column_config(table: pd.DataFrame) -> dict:
+    config: dict = {
         COL_GROUP: st.column_config.TextColumn(COL_GROUP, width=_NAME_COL_WIDTH_PX),
         COL_SHOP: st.column_config.TextColumn(COL_SHOP, width=_NAME_COL_WIDTH_PX),
         COL_WEEK: st.column_config.TextColumn(COL_WEEK, width=_WEEK_COL_WIDTH_PX),
     }
+    for column in table.columns:
+        if column in config:
+            continue
+        config[column] = st.column_config.TextColumn(
+            column,
+            width=_CATEGORY_COL_WIDTH_PX,
+        )
+    return config
 
 
 def _shop_rows(

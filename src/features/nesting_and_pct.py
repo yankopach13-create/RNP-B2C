@@ -39,8 +39,8 @@ from features.table_layout import (
     stack_named_metric_tables,
 )
 
-_NAME_COL_WIDTH_PX = 200
-_VALUE_COL_WIDTH_PX = 90
+_NAME_COL_WIDTH_PX = 118
+_VALUE_COL_WIDTH_PX = 108
 BLOCK_TITLE = "Вложенность и % без БК"
 
 
