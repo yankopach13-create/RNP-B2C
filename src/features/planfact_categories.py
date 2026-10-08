@@ -6,7 +6,14 @@ import pandas as pd
 import streamlit as st
 
 from config.constants import CATEGORY_COLUMN_GENERAL
-from features.categories import apply_category_reference
+from features.categories import (
+    _is_empty_level,
+    _key_level3,
+    _key_level4,
+    _norm_cell,
+    apply_category_reference,
+    slash_level_maps,
+)
 from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     _build_shop_group_map,
@@ -218,10 +225,17 @@ def _qty_by_shop_and_category(
         general = df[CATEGORY_COLUMN_GENERAL]
     else:
         general = pd.Series("", index=df.index)
+    slash_pairs = _slash_pairs_for_sales(df, categories_df)
     work["_shop"] = work[COL_SHOP].map(_normalize_shop_key)
     work["_cat"] = [
-        _planfact_match_key(rnp, gen)
-        for rnp, gen in zip(work["Категория"].tolist(), general.tolist())
+        _planfact_match_key(pair[0], pair[1])
+        if pair is not None
+        else _planfact_match_key(rnp, gen)
+        for rnp, gen, pair in zip(
+            work["Категория"].tolist(),
+            general.tolist(),
+            slash_pairs,
+        )
     ]
     work[COL_QTY] = pd.to_numeric(work[COL_QTY], errors="coerce").fillna(0.0)
     work = work.loc[work["_shop"].ne("") & work["_cat"].ne("")]
@@ -229,6 +243,42 @@ def _qty_by_shop_and_category(
         return {}
     agg = work.groupby(["_shop", "_cat"], sort=False)[COL_QTY].sum()
     return {(str(shop), str(cat)): float(qty) for (shop, cat), qty in agg.items()}
+
+
+def _slash_pairs_for_sales(
+    sales_df: pd.DataFrame,
+    categories_df: pd.DataFrame | None,
+) -> list[tuple[str, str] | None]:
+    """Правая часть «Прочие товары/…» из справочника, по строкам продаж."""
+    empty = [None] * len(sales_df)
+    if categories_df is None or categories_df.empty:
+        return empty
+    if "Товар ур.2" not in sales_df.columns or "Товар ур.3" not in sales_df.columns:
+        return empty
+    map4, map3, map2 = slash_level_maps(categories_df)
+    if not map4 and not map3 and not map2:
+        return empty
+    u4_series = (
+        sales_df["Товар ур.4"]
+        if "Товар ур.4" in sales_df.columns
+        else pd.Series("", index=sales_df.index)
+    )
+    pairs: list[tuple[str, str] | None] = []
+    for u2, u3, u4 in zip(
+        sales_df["Товар ур.2"].tolist(),
+        sales_df["Товар ур.3"].tolist(),
+        u4_series.tolist(),
+    ):
+        u2_n, u3_n, u4_n = _norm_cell(u2), _norm_cell(u3), _norm_cell(u4)
+        pair = None
+        if u2_n and u3_n and not _is_empty_level(u4_n):
+            pair = map4.get(_key_level4(u2_n, u3_n, u4_n))
+        if pair is None and u2_n and u3_n:
+            pair = map3.get(_key_level3(u2_n, u3_n))
+        if pair is None and u2_n:
+            pair = map2.get(u2_n.lower())
+        pairs.append(pair)
+    return pairs
 
 
 def _prepare_sales(

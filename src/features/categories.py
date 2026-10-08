@@ -155,6 +155,23 @@ def _build_level_maps(category_df: pd.DataFrame):
     return map4, map3, map2
 
 
+def slash_level_maps(category_df: pd.DataFrame) -> tuple[dict, dict, dict]:
+    """Ключ товара → (левая часть, правая часть «/») без столбца Общего РНП.
+
+    Старый столбец «Категория товара Общий РНП:» не подменяет правую часть
+    ячейки «Категория товара РНП:» вида «Прочие товары/Уголь».
+    """
+    if category_df is None or category_df.empty:
+        return {}, {}, {}
+    df = category_df.copy()
+    df.columns = df.columns.astype(str).str.strip()
+    if CATEGORY_COLUMN_RNP not in df.columns:
+        return {}, {}, {}
+    if CATEGORY_COLUMN_GENERAL in df.columns:
+        df = df.drop(columns=[CATEGORY_COLUMN_GENERAL])
+    return _build_level_maps(df)
+
+
 def get_level_maps(category_df: pd.DataFrame) -> tuple[dict, dict, dict]:
     """Кэшированные карты уровней товаров для одного датафрейма справочника."""
     cache_key = id(category_df)

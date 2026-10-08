@@ -593,6 +593,51 @@ def test_planfact_categories_table() -> None:
     _assert(row["Поды"] == "0", "empty pods")
 
 
+def test_planfact_uses_slash_not_general_override() -> None:
+    """«Прочие товары/Уголь» не затирается столбцом Общего РНП."""
+    categories = pd.DataFrame(
+        {
+            "Товар ур.2": ["Прочее", "Прочее", "Прочее", "Прочее"],
+            "Товар ур.3": ["Уголь", "Аксессуары", "Кальян", "Разное"],
+            "Товар ур.4": ["", "", "", ""],
+            "Категория товара РНП:": [
+                "Прочие товары/Уголь",
+                "Прочие товары/Аксессуары",
+                "Прочие товары/Кальян",
+                "Прочие товары/Прочие товары",
+            ],
+            "Категория товара Общий РНП:": ["Прочие товары"] * 4,
+        }
+    )
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Гиппо Рокоссовского"] * 4,
+            "Товар ур.2": ["Прочее"] * 4,
+            "Товар ур.3": ["Уголь", "Аксессуары", "Кальян", "Разное"],
+            "Товар ур.4": [""] * 4,
+            "Категория": ["Прочие товары"] * 4,
+            "Категория товара Общий РНП:": ["Прочие товары"] * 4,
+            "Количество": [50, 3, 5, 9],
+        }
+    )
+    groups = pd.DataFrame(
+        {"Магазин": ["Гиппо Рокоссовского"], "Группа": ["Восток"]}
+    )
+    table = build_planfact_categories_table(
+        sales,
+        groups,
+        ["Гиппо Рокоссовского"],
+        ["Восток"],
+        40,
+        categories,
+    )
+    row = table.iloc[0]
+    _assert(row["Уголь"] == "50", "coal from slash")
+    _assert(row["Аксессуары"] == "3", "accessories from slash")
+    _assert(row["Кальяны"] == "5", "hookah from slash")
+    _assert(row["Прочие"] == "9", "plain other stays in other")
+
+
 def test_excel_export_consumables_sheet() -> None:
     from data.loaders import AppData
     from features import excel_export
@@ -1301,6 +1346,7 @@ OFFLINE_TESTS = [
     test_consumables_nesting_values,
     test_excel_export_consumables_sheet,
     test_planfact_categories_table,
+    test_planfact_uses_slash_not_general_override,
     test_turnover_by_level4,
     test_turnover_level4_fallback_u3,
     test_turnover_legacy_level3,
