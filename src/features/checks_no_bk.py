@@ -1,4 +1,4 @@
-"""Блок «% чеков без БК»: продавцы, магазины, группы."""
+"""Блок «% чеков без БК»: группы, магазины и продавцы в одной таблице."""
 
 from __future__ import annotations
 
@@ -20,7 +20,16 @@ from data.references import (
     sheets_configured,
 )
 from features.clients import _has_client_code
+from features.metrics import (
+    FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    _financial_dataframe_height,
+)
 from features.reference_update import append_sellers_to_pct_no_bk
+from features.table_layout import (
+    STACKED_ORDER_NAME_COL,
+    STACKED_ORDER_TABLE_VISIBLE_ROWS,
+    stack_named_metric_tables,
+)
 
 COL_PCT_NO_BK = "% без БК"
 COL_SELLER = "Продавец"
@@ -51,7 +60,6 @@ _UPLOAD_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_UPLOAD_CLIENT: (COL_UPLOAD_CLIENT, "код клиента"),
 }
 
-_TABLE_ROW_HEIGHT_PX = 35
 _NAME_COL_WIDTH_PX = 210
 _VALUE_COL_WIDTH_PX = 90
 
@@ -487,6 +495,22 @@ def build_groups_no_bk_table(
     )
 
 
+def build_checks_no_bk_table(
+    reference_df: pd.DataFrame | None = None,
+    upload_df: pd.DataFrame | None = None,
+    groups_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Группы, затем магазины, затем продавцы — через пустую строку."""
+    return stack_named_metric_tables(
+        [
+            build_groups_no_bk_table(reference_df, upload_df, groups_df),
+            build_shops_no_bk_table(reference_df, upload_df),
+            build_sellers_no_bk_table(reference_df, upload_df),
+        ],
+        value_column=COL_PCT_NO_BK,
+    )
+
+
 def _load_pct_no_bk_reference() -> pd.DataFrame | None:
     try:
         return load_reference(REF_PCT_NO_BK)
@@ -501,16 +525,14 @@ def _load_pct_no_bk_reference() -> pd.DataFrame | None:
         return None
 
 
-def _render_order_table(
-    table: pd.DataFrame,
-    *,
-    name_column: str,
-) -> None:
+def _render_order_table(table: pd.DataFrame) -> None:
+    table_height = _financial_dataframe_height(STACKED_ORDER_TABLE_VISIBLE_ROWS)
     if table.empty:
         st.dataframe(
             table,
             use_container_width=True,
             hide_index=True,
+            height=table_height,
         )
         return
 
@@ -518,10 +540,11 @@ def _render_order_table(
         table,
         use_container_width=True,
         hide_index=True,
-        row_height=_TABLE_ROW_HEIGHT_PX,
+        height=table_height,
+        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config={
-            name_column: st.column_config.TextColumn(
-                name_column,
+            STACKED_ORDER_NAME_COL: st.column_config.TextColumn(
+                STACKED_ORDER_NAME_COL,
                 width=_NAME_COL_WIDTH_PX,
             ),
             COL_PCT_NO_BK: st.column_config.TextColumn(
@@ -538,7 +561,7 @@ def render_checks_no_bk_block(
     groups_df: pd.DataFrame | None = None,
     embedded: bool = False,
 ) -> None:
-    """Три таблицы (продавцы, магазины, группы) по загруженному файлу."""
+    """Таблица % без БК: группы, магазины, продавцы."""
     try:
         _render_checks_no_bk_block_impl(
             upload_df=upload_df,
@@ -604,22 +627,6 @@ def _render_checks_no_bk_block_impl(
     )
     _render_new_sellers_panel(new_sellers, file_loaded=upload_df is not None)
 
-    col_sellers, col_shops, col_groups = st.columns([1, 1, 1])
-
-    with col_sellers:
-        _render_order_table(
-            build_sellers_no_bk_table(reference_df, upload_df),
-            name_column=COL_SELLER,
-        )
-
-    with col_shops:
-        _render_order_table(
-            build_shops_no_bk_table(reference_df, upload_df),
-            name_column=COL_SHOP,
-        )
-
-    with col_groups:
-        _render_order_table(
-            build_groups_no_bk_table(reference_df, upload_df, groups_df),
-            name_column=COL_GROUP,
-        )
+    _render_order_table(
+        build_checks_no_bk_table(reference_df, upload_df, groups_df)
+    )

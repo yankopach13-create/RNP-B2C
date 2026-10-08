@@ -576,27 +576,20 @@ def _render_hookah_and_checks_no_bk(
     """Кальянная продукция, вложенность расходников и % чеков без БК."""
     st.divider()
     if include_hookah:
-        col_hookah, col_nesting = st.columns([1, 1.7], gap="medium")
-        with col_hookah:
-            _render_hookah_products(data, sales_df, report_week)
-        with col_nesting:
-            render_consumables_nesting_block(
-                upload_df=getattr(data, "consumables_nesting", None),
-                groups_df=data.groups,
-                embedded=True,
-            )
-    else:
+        _render_hookah_products(data, sales_df, report_week)
+    col_nesting, col_no_bk = st.columns([1, 1], gap="medium")
+    with col_nesting:
         render_consumables_nesting_block(
             upload_df=getattr(data, "consumables_nesting", None),
             groups_df=data.groups,
             embedded=True,
         )
-    st.divider()
-    render_checks_no_bk_block(
-        upload_df=getattr(data, "checks_no_bk", None),
-        groups_df=data.groups,
-        embedded=True,
-    )
+    with col_no_bk:
+        render_checks_no_bk_block(
+            upload_df=getattr(data, "checks_no_bk", None),
+            groups_df=data.groups,
+            embedded=True,
+        )
 
 
 _PAIRED_TABLES_VISIBLE_ROWS = 13

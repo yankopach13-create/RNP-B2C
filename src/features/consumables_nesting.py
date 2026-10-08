@@ -1,4 +1,4 @@
-"""Блок «Вложенность расходников»: продавцы, магазины, группы."""
+"""Блок «Вложенность расходников»: группы, магазины и продавцы в одной таблице."""
 
 from __future__ import annotations
 
@@ -13,10 +13,14 @@ from config.constants import (
     PCT_NO_BK_COLUMN_SHOPS,
 )
 from data.references import REF_PCT_NO_BK, get_reference_label, load_reference
-from features.hookah_products import FOCUS_TABLE_VISIBLE_ROWS
 from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     _financial_dataframe_height,
+)
+from features.table_layout import (
+    STACKED_ORDER_NAME_COL,
+    STACKED_ORDER_TABLE_VISIBLE_ROWS,
+    stack_named_metric_tables,
 )
 
 COL_NESTING = "Вложенность"
@@ -56,7 +60,7 @@ _UPLOAD_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_NAME_COL_WIDTH_PX = 140
+_NAME_COL_WIDTH_PX = 200
 _VALUE_COL_WIDTH_PX = 90
 _NESTING_DECIMALS = 3
 
@@ -397,41 +401,36 @@ def load_pct_no_bk_reference() -> pd.DataFrame | None:
         return None
 
 
+def build_consumables_nesting_table(
+    reference_df: pd.DataFrame | None = None,
+    upload_df: pd.DataFrame | None = None,
+    groups_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Группы, затем магазины, затем продавцы — через пустую строку."""
+    return stack_named_metric_tables(
+        [
+            build_groups_nesting_table(reference_df, upload_df, groups_df),
+            build_shops_nesting_table(reference_df, upload_df),
+            build_sellers_nesting_table(reference_df, upload_df),
+        ],
+        value_column=COL_NESTING,
+    )
+
+
 def build_consumables_nesting_excel_table(
     reference_df: pd.DataFrame | None = None,
     upload_df: pd.DataFrame | None = None,
     groups_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame | None:
-    """Три таблицы в ряд: продавцы, магазины, группы."""
-    sellers = build_sellers_nesting_table(reference_df, upload_df)
-    shops = build_shops_nesting_table(reference_df, upload_df)
-    groups = build_groups_nesting_table(reference_df, upload_df, groups_df)
-    if sellers.empty and shops.empty and groups.empty:
+    """Одна таблица: группы, магазины, продавцы."""
+    table = build_consumables_nesting_table(reference_df, upload_df, groups_df)
+    if table.empty:
         return None
-
-    n = max(len(sellers), len(shops), len(groups), 1)
-
-    def _pad(table: pd.DataFrame) -> pd.DataFrame:
-        if table.empty:
-            cols = list(table.columns) or ["", COL_NESTING]
-            return pd.DataFrame({c: [""] * n for c in cols})
-        if len(table) >= n:
-            return table.reset_index(drop=True)
-        extra = pd.DataFrame(
-            {c: [""] * (n - len(table)) for c in table.columns},
-        )
-        return pd.concat([table.reset_index(drop=True), extra], ignore_index=True)
-
-    sellers = _pad(sellers)
-    shops = _pad(shops)
-    groups = _pad(groups)
-    gap = pd.DataFrame({" ": [""] * n})
-    gap2 = pd.DataFrame({"  ": [""] * n})
-    return pd.concat([sellers, gap, shops, gap2, groups], axis=1)
+    return table
 
 
-def _render_order_table(table: pd.DataFrame, *, name_column: str) -> None:
-    table_height = _financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS)
+def _render_order_table(table: pd.DataFrame) -> None:
+    table_height = _financial_dataframe_height(STACKED_ORDER_TABLE_VISIBLE_ROWS)
     if table.empty:
         st.dataframe(
             table,
@@ -447,8 +446,8 @@ def _render_order_table(table: pd.DataFrame, *, name_column: str) -> None:
         height=table_height,
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config={
-            name_column: st.column_config.TextColumn(
-                name_column,
+            STACKED_ORDER_NAME_COL: st.column_config.TextColumn(
+                STACKED_ORDER_NAME_COL,
                 width=_NAME_COL_WIDTH_PX,
             ),
             COL_NESTING: st.column_config.TextColumn(
@@ -465,7 +464,7 @@ def render_consumables_nesting_block(
     groups_df: pd.DataFrame | None = None,
     embedded: bool = False,
 ) -> None:
-    """Три мини-таблицы вложенности расходников."""
+    """Таблица вложенности расходников: группы, магазины, продавцы."""
     try:
         _render_consumables_nesting_block_impl(
             upload_df=upload_df,
@@ -525,19 +524,6 @@ def _render_consumables_nesting_block_impl(
             "Справочник магазинов недоступен — таблица групп не будет рассчитана."
         )
 
-    col_sellers, col_shops, col_groups = st.columns([1, 1, 1])
-    with col_sellers:
-        _render_order_table(
-            build_sellers_nesting_table(reference_df, upload_df),
-            name_column=COL_SELLER,
-        )
-    with col_shops:
-        _render_order_table(
-            build_shops_nesting_table(reference_df, upload_df),
-            name_column=COL_SHOP,
-        )
-    with col_groups:
-        _render_order_table(
-            build_groups_nesting_table(reference_df, upload_df, groups_df),
-            name_column=COL_GROUP,
-        )
+    _render_order_table(
+        build_consumables_nesting_table(reference_df, upload_df, groups_df)
+    )

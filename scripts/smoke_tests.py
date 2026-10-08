@@ -29,6 +29,7 @@ from features.data_prep import collect_new_shops, collect_unmatched_products  # 
 from features.hookah_products import build_hookah_products_table  # noqa: E402
 from features.ai_report import ai_category_metric_rows, build_ai_report_table  # noqa: E402
 from features.checks_no_bk import (  # noqa: E402
+    build_checks_no_bk_table,
     build_groups_no_bk_table,
     build_sellers_no_bk_table,
     build_shops_no_bk_table,
@@ -37,10 +38,12 @@ from features.checks_no_bk import (  # noqa: E402
 from features.consumables_nesting import (  # noqa: E402
     COL_NESTING,
     build_consumables_nesting_excel_table,
+    build_consumables_nesting_table,
     build_groups_nesting_table,
     build_sellers_nesting_table,
     build_shops_nesting_table,
 )
+from features.table_layout import STACKED_ORDER_NAME_COL  # noqa: E402
 from features.reference_update import (  # noqa: E402
     _mutate_categories_add_product,
     _mutate_pct_no_bk_append_seller,
@@ -456,6 +459,12 @@ def test_checks_no_bk_pcts() -> None:
         gr.loc[gr["Группа"] == "Восток", "% без БК"].iloc[0] == "33,3%",
         "group east",
     )
+    combined = build_checks_no_bk_table(ref, upload, groups)
+    _assert(
+        combined[STACKED_ORDER_NAME_COL].tolist()
+        == ["Восток", "Юг", "", "Магазин A", "Магазин B", "", "Иванов", "Петров"],
+        "no bk stacked order",
+    )
 
 
 def test_consumables_nesting_values() -> None:
@@ -492,11 +501,16 @@ def test_consumables_nesting_values() -> None:
         gr.loc[gr["Группа"] == "Восток", COL_NESTING].iloc[0] == "0,600",
         "group east nesting",
     )
+    stacked = build_consumables_nesting_table(ref, upload, groups)
+    _assert(
+        stacked[STACKED_ORDER_NAME_COL].tolist()
+        == ["Восток", "Юг", "", "Магазин A", "Магазин B", "", "Иванов", "Петров"],
+        "nesting stacked order",
+    )
     excel_table = build_consumables_nesting_excel_table(ref, upload, groups)
     _assert(excel_table is not None, "excel table")
-    _assert("Продавец" in excel_table.columns, "seller col")
-    _assert("Магазин" in excel_table.columns, "shop col")
-    _assert("Группа" in excel_table.columns, "group col")
+    _assert(STACKED_ORDER_NAME_COL in excel_table.columns, "name col")
+    _assert(COL_NESTING in excel_table.columns, "nesting col")
 
 
 def test_excel_export_consumables_sheet() -> None:
