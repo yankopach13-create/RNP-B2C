@@ -548,23 +548,41 @@ def _build_shop_economy_table_simple(
     )
 
 
-def _render_hookah_and_checks_no_bk(
+def _render_hookah_products(
     data: AppData,
     sales_df: pd.DataFrame | None,
     report_week: int | None,
 ) -> None:
+    """Таблица «Кальянная продукция»."""
+    render_hookah_products_block(
+        sales_df=sales_df if sales_df is not None else data.sales,
+        focus_hookah=data.focus_hookah,
+        groups_df=data.groups,
+        report_week=None if sales_df is not None else report_week,
+        embedded=True,
+    )
+
+
+def _render_hookah_and_checks_no_bk(
+    data: AppData,
+    sales_df: pd.DataFrame | None,
+    report_week: int | None,
+    *,
+    include_hookah: bool = True,
+) -> None:
     """Кальянная продукция, вложенность расходников и % чеков без БК."""
     st.divider()
-    col_hookah, col_nesting = st.columns([1, 1.7], gap="medium")
-    with col_hookah:
-        render_hookah_products_block(
-            sales_df=sales_df if sales_df is not None else data.sales,
-            focus_hookah=data.focus_hookah,
-            groups_df=data.groups,
-            report_week=None if sales_df is not None else report_week,
-            embedded=True,
-        )
-    with col_nesting:
+    if include_hookah:
+        col_hookah, col_nesting = st.columns([1, 1.7], gap="medium")
+        with col_hookah:
+            _render_hookah_products(data, sales_df, report_week)
+        with col_nesting:
+            render_consumables_nesting_block(
+                upload_df=getattr(data, "consumables_nesting", None),
+                groups_df=data.groups,
+                embedded=True,
+            )
+    else:
         render_consumables_nesting_block(
             upload_df=getattr(data, "consumables_nesting", None),
             groups_df=data.groups,
@@ -594,7 +612,8 @@ def _render_shop_economy_and_lfl(
         return
 
     st.divider()
-    col_left, col_lfl = st.columns([1.28, 1.82])
+    # План-факт уже двухколоночный: узкая колонка, справа кальян, далее факторный анализ.
+    col_shop, col_hookah, col_lfl = st.columns([0.82, 1.15, 1.9], gap="medium")
 
     lfl_table = None
     lfl_df = get_lfl_with_liquid_margins(data, week_config)
@@ -612,7 +631,7 @@ def _render_shop_economy_and_lfl(
         else None
     )
 
-    with col_left:
+    with col_shop:
         st.markdown("**План-факт магазины**")
         if has_shop:
             shop_table, shop_row_kinds = _build_shop_economy_table_simple(
@@ -635,6 +654,9 @@ def _render_shop_economy_and_lfl(
         else:
             st.info("Нет данных по магазинам.")
 
+    with col_hookah:
+        _render_hookah_products(data, sales_df, report_week)
+
     with col_lfl:
         if has_lfl:
             render_lfl_block(
@@ -654,7 +676,12 @@ def _render_shop_economy_and_lfl(
                 "(загрузите продажи с колонкой «Неделя» или отдельный файл)."
             )
 
-    _render_hookah_and_checks_no_bk(data, sales_df, report_week)
+    _render_hookah_and_checks_no_bk(
+        data,
+        sales_df,
+        report_week,
+        include_hookah=False,
+    )
 
 
 if __name__ == "__main__":
