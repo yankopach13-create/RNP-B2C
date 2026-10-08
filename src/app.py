@@ -33,7 +33,7 @@ from features.metrics import (
     render_shop_economy_dataframe,
     _build_shop_economy_table,
     _can_build_financial_metrics,
-    _full_table_height,
+    _financial_dataframe_height,
 )
 from features.excise_liquid import WeekCalculationConfig
 from features.excel_export import rnp_b2c_excel_filename
@@ -599,6 +599,9 @@ def _render_hookah_and_checks_no_bk(
     )
 
 
+_PAIRED_TABLES_VISIBLE_ROWS = 13
+
+
 def _render_shop_economy_and_lfl(
     data: AppData,
     sales_df: pd.DataFrame | None,
@@ -639,14 +642,7 @@ def _render_shop_economy_and_lfl(
             data.groups,
         )
 
-    paired_row_counts = []
-    if lfl_table is not None and not lfl_table.empty:
-        paired_row_counts.append(len(lfl_table))
-    if shop_table is not None and not shop_table.empty:
-        paired_row_counts.append(len(shop_table))
-    paired_table_height = (
-        _full_table_height(max(paired_row_counts)) if paired_row_counts else None
-    )
+    paired_table_height = _financial_dataframe_height(_PAIRED_TABLES_VISIBLE_ROWS)
 
     with col_shop:
         st.markdown("**План-факт магазины**")
@@ -654,7 +650,7 @@ def _render_shop_economy_and_lfl(
             render_shop_economy_dataframe(
                 shop_table,
                 shop_row_kinds,
-                height=paired_table_height or _full_table_height(len(shop_table)),
+                height=paired_table_height,
             )
         else:
             st.info("Нет данных по магазинам.")
