@@ -28,19 +28,14 @@ from features.consumables_nesting import (
     build_shops_nesting_table,
     load_pct_no_bk_reference,
 )
-from features.metrics import (
-    FINANCIAL_TABLE_ROW_HEIGHT_PX,
-    _financial_dataframe_height,
-)
 from features.table_layout import (
     STACKED_ORDER_NAME_COL,
     STACKED_ORDER_TABLE_VISIBLE_ROWS,
+    fixed_width_table_html,
     merge_named_metric_tables,
     stack_named_metric_tables,
 )
 
-_NAME_COL_WIDTH_PX = 118
-_VALUE_COL_WIDTH_PX = 108
 BLOCK_TITLE = "Вложенность и % без БК"
 
 
@@ -169,31 +164,16 @@ def _render_nesting_and_pct_block_impl(
 
 
 def _render_table(table: pd.DataFrame) -> None:
-    table_height = _financial_dataframe_height(STACKED_ORDER_TABLE_VISIBLE_ROWS)
-    kwargs = {
-        "use_container_width": True,
-        "hide_index": True,
-        "height": table_height,
-    }
-    if table.empty:
-        st.dataframe(table, **kwargs)
-        return
-    st.dataframe(
-        table,
-        **kwargs,
-        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
-        column_config={
-            STACKED_ORDER_NAME_COL: st.column_config.TextColumn(
-                STACKED_ORDER_NAME_COL,
-                width=_NAME_COL_WIDTH_PX,
-            ),
-            COL_NESTING: st.column_config.TextColumn(
-                COL_NESTING,
-                width=_VALUE_COL_WIDTH_PX,
-            ),
-            COL_PCT_NO_BK: st.column_config.TextColumn(
-                COL_PCT_NO_BK,
-                width=_VALUE_COL_WIDTH_PX,
-            ),
-        },
+    st.markdown(
+        fixed_width_table_html(
+            table,
+            {
+                STACKED_ORDER_NAME_COL: "32%",
+                COL_NESTING: "30%",
+                COL_PCT_NO_BK: "38%",
+            },
+            right_aligned={COL_NESTING, COL_PCT_NO_BK},
+            visible_rows=STACKED_ORDER_TABLE_VISIBLE_ROWS,
+        ),
+        unsafe_allow_html=True,
     )

@@ -7,25 +7,25 @@ import streamlit as st
 
 from features.categories import apply_category_reference
 from features.metrics import (
-    FINANCIAL_TABLE_ROW_HEIGHT_PX,
     _build_shop_group_map,
     _filter_groups_for_shop_economy,
-    _financial_dataframe_height,
     _fmt_int,
     _normalize_shop_key,
     _shops_by_group_from_order,
 )
 from features.reference_orders import resolve_groups_order, resolve_shops_order
-from features.table_layout import STACKED_ORDER_TABLE_VISIBLE_ROWS
+from features.table_layout import (
+    STACKED_ORDER_TABLE_VISIBLE_ROWS,
+    fixed_width_table_html,
+)
 
 COL_GROUP = "Группа"
 COL_SHOP = "Магазин"
 COL_WEEK = "Неделя"
 COL_QTY = "Количество"
-
-_NAME_COL_WIDTH_PX = 88
-_WEEK_COL_WIDTH_PX = 40
-_CATEGORY_COL_WIDTH_PX = 70
+_GROUP_COL_PCT = 8.0
+_SHOP_COL_PCT = 11.0
+_WEEK_COL_PCT = 5.0
 
 # Колонка в таблице → категории из справочника РНП (столбец «Категория»).
 PLANFACT_CATEGORY_COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -130,30 +130,41 @@ def render_planfact_categories_block(
         st.info("Нет данных для план-факта категорий.")
         return
 
-    st.dataframe(
-        table,
-        use_container_width=True,
-        hide_index=True,
-        height=_financial_dataframe_height(STACKED_ORDER_TABLE_VISIBLE_ROWS),
-        row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
-        column_config=_column_config(table),
+    st.markdown(
+        fixed_width_table_html(
+            table,
+            _planfact_column_widths(table),
+            right_aligned=_planfact_right_aligned(table),
+            visible_rows=STACKED_ORDER_TABLE_VISIBLE_ROWS,
+        ),
+        unsafe_allow_html=True,
     )
 
 
-def _column_config(table: pd.DataFrame) -> dict:
-    config: dict = {
-        COL_GROUP: st.column_config.TextColumn(COL_GROUP, width=_NAME_COL_WIDTH_PX),
-        COL_SHOP: st.column_config.TextColumn(COL_SHOP, width=_NAME_COL_WIDTH_PX),
-        COL_WEEK: st.column_config.TextColumn(COL_WEEK, width=_WEEK_COL_WIDTH_PX),
+def _planfact_column_widths(table: pd.DataFrame) -> dict[str, str]:
+    category_cols = [
+        column
+        for column in table.columns
+        if column not in (COL_GROUP, COL_SHOP, COL_WEEK)
+    ]
+    leftover = 100.0 - _GROUP_COL_PCT - _SHOP_COL_PCT - _WEEK_COL_PCT
+    cat_pct = leftover / max(len(category_cols), 1)
+    widths = {
+        COL_GROUP: f"{_GROUP_COL_PCT:.2f}%",
+        COL_SHOP: f"{_SHOP_COL_PCT:.2f}%",
+        COL_WEEK: f"{_WEEK_COL_PCT:.2f}%",
     }
-    for column in table.columns:
-        if column in config:
-            continue
-        config[column] = st.column_config.TextColumn(
-            column,
-            width=_CATEGORY_COL_WIDTH_PX,
-        )
-    return config
+    for column in category_cols:
+        widths[column] = f"{cat_pct:.2f}%"
+    return widths
+
+
+def _planfact_right_aligned(table: pd.DataFrame) -> set[str]:
+    return {
+        column
+        for column in table.columns
+        if column not in (COL_GROUP, COL_SHOP)
+    }
 
 
 def _shop_rows(

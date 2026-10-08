@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 import pandas as pd
 
 # Высота таблиц на листе: видно 5 строк данных + прокрутка; fullscreen — все строки.
@@ -121,6 +123,90 @@ def merge_named_metric_tables(
             ignore_index=True,
         )
     return out[[name_column, left_value, right_value]]
+
+
+def fixed_width_table_html(
+    table: pd.DataFrame,
+    column_widths: dict[str, str],
+    *,
+    right_aligned: set[str] | frozenset[str] | None = None,
+    visible_rows: int = STACKED_ORDER_TABLE_VISIBLE_ROWS,
+    row_height_px: int = FINANCIAL_TABLE_ROW_HEIGHT_PX,
+    header_height_px: int = FINANCIAL_TABLE_HEADER_HEIGHT_PX,
+) -> str:
+    """HTML-таблица с table-layout:fixed — ширины колонок не зависят от текста."""
+    right_aligned = set(right_aligned or ())
+    max_height = header_height_px + max(int(visible_rows), 1) * row_height_px
+    columns = [str(col) for col in table.columns]
+    colgroup = "".join(
+        f'<col style="width:{html.escape(column_widths.get(col, "auto"), quote=True)}">'
+        for col in columns
+    )
+    header_cells = []
+    for col in columns:
+        align = "right" if col in right_aligned else "left"
+        header_cells.append(
+            f'<th style="text-align:{align}">{html.escape(col)}</th>'
+        )
+    body_rows = []
+    for row in table.itertuples(index=False, name=None):
+        cells = []
+        for col, value in zip(columns, row):
+            align = "right" if col in right_aligned else "left"
+            text = "" if value is None or (isinstance(value, float) and pd.isna(value)) else str(value)
+            cells.append(
+                f'<td style="text-align:{align}" title="{html.escape(text, quote=True)}">'
+                f"{html.escape(text)}</td>"
+            )
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    if not body_rows:
+        body_rows.append(
+            f'<tr><td colspan="{len(columns)}" style="text-align:center;opacity:0.65">Нет данных</td></tr>'
+        )
+    return f"""
+<div class="rnp-fixed-table" style="max-height:{max_height}px">
+<style>
+.rnp-fixed-table {{
+  overflow: auto;
+  width: 100%;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 8px;
+  background: transparent;
+}}
+.rnp-fixed-table table {{
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}}
+.rnp-fixed-table th,
+.rnp-fixed-table td {{
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.22);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+  height: {row_height_px}px;
+}}
+.rnp-fixed-table th {{
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 600;
+  white-space: normal;
+  height: auto;
+  min-height: {header_height_px}px;
+  background: var(--secondary-background-color, rgba(128, 128, 128, 0.18));
+}}
+</style>
+<table>
+<colgroup>{colgroup}</colgroup>
+<thead><tr>{"".join(header_cells)}</tr></thead>
+<tbody>{"".join(body_rows)}</tbody>
+</table>
+</div>
+"""
 
 
 def compact_dataframe_layout_css() -> str:
