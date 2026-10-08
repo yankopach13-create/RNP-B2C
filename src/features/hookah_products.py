@@ -110,6 +110,7 @@ def render_hookah_products_block(
     groups_df: pd.DataFrame | None = None,
     report_week: int | None = None,
     embedded: bool = False,
+    table_height: int | None = None,
 ) -> None:
     """Метрики слева, значения справа."""
     if not embedded:
@@ -136,7 +137,7 @@ def render_hookah_products_block(
         table,
         use_container_width=True,
         hide_index=True,
-        height=_financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS),
+        height=table_height or _financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
         column_config={
             COL_METRIC: st.column_config.TextColumn(

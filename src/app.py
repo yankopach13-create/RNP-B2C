@@ -552,6 +552,8 @@ def _render_hookah_products(
     data: AppData,
     sales_df: pd.DataFrame | None,
     report_week: int | None,
+    *,
+    table_height: int | None = None,
 ) -> None:
     """Таблица «Кальянная продукция»."""
     render_hookah_products_block(
@@ -560,6 +562,7 @@ def _render_hookah_products(
         groups_df=data.groups,
         report_week=None if sales_df is not None else report_week,
         embedded=True,
+        table_height=table_height,
     )
 
 
@@ -625,37 +628,44 @@ def _render_shop_economy_and_lfl(
             report_week,
             data.category_order_rnp,
         )
+
+    shop_table = None
+    shop_row_kinds: list[str] = []
+    if has_shop:
+        shop_table, shop_row_kinds = _build_shop_economy_table_simple(
+            sales_df,
+            data.shops_order,
+            data.groups_order_rnp,
+            data.groups,
+        )
+
+    paired_row_counts = []
+    if lfl_table is not None and not lfl_table.empty:
+        paired_row_counts.append(len(lfl_table))
+    if shop_table is not None and not shop_table.empty:
+        paired_row_counts.append(len(shop_table))
     paired_table_height = (
-        _full_table_height(len(lfl_table))
-        if lfl_table is not None and not lfl_table.empty
-        else None
+        _full_table_height(max(paired_row_counts)) if paired_row_counts else None
     )
 
     with col_shop:
         st.markdown("**План-факт магазины**")
-        if has_shop:
-            shop_table, shop_row_kinds = _build_shop_economy_table_simple(
-                sales_df,
-                data.shops_order,
-                data.groups_order_rnp,
-                data.groups,
+        if shop_table is not None and not shop_table.empty:
+            render_shop_economy_dataframe(
+                shop_table,
+                shop_row_kinds,
+                height=paired_table_height or _full_table_height(len(shop_table)),
             )
-            if not shop_table.empty:
-                shop_table_height = paired_table_height or _full_table_height(
-                    len(shop_table)
-                )
-                render_shop_economy_dataframe(
-                    shop_table,
-                    shop_row_kinds,
-                    height=shop_table_height,
-                )
-            else:
-                st.info("Нет данных по магазинам.")
         else:
             st.info("Нет данных по магазинам.")
 
     with col_hookah:
-        _render_hookah_products(data, sales_df, report_week)
+        _render_hookah_products(
+            data,
+            sales_df,
+            report_week,
+            table_height=paired_table_height,
+        )
 
     with col_lfl:
         if has_lfl:
