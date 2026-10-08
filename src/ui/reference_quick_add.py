@@ -23,6 +23,7 @@ from features.reference_orders import (
 from features.reference_update import (
     QuickCategoryOrderEntry,
     QuickProductEntry,
+    append_sellers_to_pct_no_bk,
     apply_reference_updates_batch,
 )
 
@@ -217,13 +218,15 @@ def render_quick_reference_update(
     groups_order_rnp: list[str] | None = None,
     category_order_rnp: list[str] | None = None,
     category_order_general: list[str] | None = None,
+    new_sellers: list[str] | None = None,
 ) -> None:
-    if not new_shops and not unmatched_products:
+    new_sellers = list(new_sellers or [])
+    if not new_shops and not unmatched_products and not new_sellers:
         return
 
     st.markdown(
-        f'<div style="{_ST["alert"]}">Обнаружены новые товары или магазины — распределите их '
-        "в справочнике ниже.</div>",
+        f'<div style="{_ST["alert"]}">Обнаружены новые товары, магазины или продавцы — '
+        "распределите их в справочнике ниже.</div>",
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -305,6 +308,18 @@ def render_quick_reference_update(
                         kp, rnp_position_options, general_position_options
                     )
 
+        if new_sellers:
+            st.markdown(
+                f'<div style="{_ST["section_highlight"]}">Новые продавцы</div>',
+                unsafe_allow_html=True,
+            )
+            for i, seller in enumerate(new_sellers):
+                st.checkbox(
+                    seller,
+                    value=True,
+                    key=f"ref_seller_sel_{i}_{_key_part(seller)}",
+                )
+
         submitted = st.button(
             "Обновить справочники и пересчитать отчёт",
             type="primary",
@@ -374,6 +389,14 @@ def render_quick_reference_update(
                 )
             )
 
+    selected_sellers: list[str] = []
+    if new_sellers:
+        for i, seller in enumerate(new_sellers):
+            if st.session_state.get(f"ref_seller_sel_{i}_{_key_part(seller)}", False):
+                selected_sellers.append(seller)
+        if not selected_sellers and not new_shops and not unmatched_products:
+            validation_messages.append("Отметьте хотя бы одного продавца.")
+
     ok_any = False
     messages: list[str] = list(validation_messages)
 
@@ -382,6 +405,11 @@ def render_quick_reference_update(
             shop_entries, product_entries
         )
         messages.extend(batch_messages)
+
+    if selected_sellers:
+        sellers_ok, sellers_message = append_sellers_to_pct_no_bk(selected_sellers)
+        ok_any = ok_any or sellers_ok
+        messages.append(sellers_message)
 
     for m in messages:
         low = m.lower()

@@ -39,7 +39,10 @@ from features.excise_liquid import WeekCalculationConfig
 from features.excel_export import rnp_b2c_excel_filename
 from features.ai_report import render_ai_report_b2c
 from features.general_rnp import render_general_rnp_b2c
-from features.checks_no_bk import render_checks_no_bk_block
+from features.checks_no_bk import (
+    collect_new_sellers_from_upload,
+    render_checks_no_bk_block,
+)
 from ui.data_session import (
     DOWNLOAD_RNP_EXCEL_KEY,
     get_cached_excel_bytes,
@@ -120,16 +123,19 @@ def main():
     if data.sales is not None:
         week_config = _render_week_selectors(data.sales)
 
-    if prepared is not None:
-        render_quick_reference_update(
-            prepared.new_shops,
-            prepared.unmatched_products,
-            data.groups,
-            data.categories,
-            data.groups_order_rnp,
-            data.category_order_rnp,
-            data.category_order_general,
-        )
+    new_sellers = collect_new_sellers_from_upload(
+        getattr(data, "checks_no_bk", None)
+    )
+    render_quick_reference_update(
+        prepared.new_shops if prepared is not None else [],
+        prepared.unmatched_products if prepared is not None else [],
+        data.groups,
+        data.categories,
+        data.groups_order_rnp,
+        data.category_order_rnp,
+        data.category_order_general,
+        new_sellers=new_sellers,
+    )
 
     _render_rnp_b2c_header(data, prepared, week_config)
 

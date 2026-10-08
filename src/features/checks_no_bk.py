@@ -15,16 +15,13 @@ from config.constants import (
 from data.references import (
     REF_PCT_NO_BK,
     get_reference_label,
-    get_sheets_connection_message,
     load_reference,
-    sheets_configured,
 )
 from features.clients import _has_client_code
 from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     _financial_dataframe_height,
 )
-from features.reference_update import append_sellers_to_pct_no_bk
 from features.table_layout import (
     STACKED_ORDER_NAME_COL,
     STACKED_ORDER_TABLE_VISIBLE_ROWS,
@@ -62,10 +59,6 @@ _UPLOAD_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
 
 _NAME_COL_WIDTH_PX = 210
 _VALUE_COL_WIDTH_PX = 90
-
-
-def _key_part(value: str) -> str:
-    return re.sub(r"[^\w]+", "_", str(value)[:48], flags=re.UNICODE).strip("_") or "x"
 
 
 def _resolve_reference_sellers_column(df: pd.DataFrame) -> str | None:
@@ -156,6 +149,22 @@ def collect_new_sellers(
     return sorted(file_sellers.values(), key=lambda x: x.casefold())
 
 
+def collect_new_sellers_from_upload(upload_df: pd.DataFrame | None) -> list[str]:
+    """Новые кассиры из файла «% чеков без БК» относительно справочника %_bk."""
+    if upload_df is None or getattr(upload_df, "empty", True):
+        return []
+    try:
+        reference_df = load_reference(REF_PCT_NO_BK)
+    except FileNotFoundError:
+        reference_df = None
+    except Exception:  # noqa: BLE001
+        reference_df = None
+    try:
+        return collect_new_sellers(upload_df, reference_df)
+    except ValueError:
+        return []
+
+
 def _best_cashier_label(series: pd.Series) -> str:
     counts: dict[str, int] = {}
     for value in series:
@@ -166,51 +175,6 @@ def _best_cashier_label(series: pd.Series) -> str:
     if not counts:
         return ""
     return max(counts.items(), key=lambda item: (item[1], len(item[0])))[0]
-
-
-def _render_new_sellers_panel(new_sellers: list[str], *, file_loaded: bool) -> None:
-    if not file_loaded:
-        return
-
-    if not new_sellers:
-        return
-
-    if not sheets_configured():
-        level, msg = get_sheets_connection_message()
-        if level == "error":
-            st.error(msg)
-        else:
-            st.warning(msg)
-
-    st.markdown(
-        '<div style="color:#8b949e;font-size:0.72rem;font-weight:600;margin:0 0 8px 0;">'
-        "Новые продавцы</div>",
-        unsafe_allow_html=True,
-    )
-    with st.container(border=True):
-        selected: list[str] = []
-        for index, seller in enumerate(new_sellers):
-            key_suffix = f"{index}_{_key_part(seller)}"
-            if st.checkbox(
-                seller,
-                value=True,
-                key=f"checks_no_bk_seller_sel_{key_suffix}",
-            ):
-                selected.append(seller)
-        if st.button(
-            "Добавить выбранных",
-            key="checks_no_bk_add_selected_sellers",
-            use_container_width=True,
-        ):
-            if not selected:
-                st.warning("Отметьте хотя бы одного продавца.")
-            else:
-                ok, message = append_sellers_to_pct_no_bk(selected)
-                if ok:
-                    st.success(message)
-                else:
-                    st.error(message)
-                st.rerun()
 
 
 def _reference_column_series(df: pd.DataFrame, column: str) -> pd.Series:
@@ -621,11 +585,6 @@ def _render_checks_no_bk_block_impl(
         st.info(
             "Справочник магазинов недоступен — таблица групп не будет рассчитана."
         )
-
-    new_sellers = (
-        collect_new_sellers(upload_df, reference_df) if upload_df is not None else []
-    )
-    _render_new_sellers_panel(new_sellers, file_loaded=upload_df is not None)
 
     _render_order_table(
         build_checks_no_bk_table(reference_df, upload_df, groups_df)
