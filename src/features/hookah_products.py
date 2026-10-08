@@ -17,6 +17,8 @@ COL_METRIC = "Метрика"
 COL_VALUE = "Значение"
 FOCUS_TABLE_VISIBLE_ROWS = 10
 HOOKAH_TABLE_ROW_HEIGHT_PX = 35
+HOOKAH_METRIC_COL_WIDTH_PX = 168
+HOOKAH_VALUE_COL_WIDTH_PX = 62
 
 COL_SHOP = "Магазин"
 COL_CHECKS = "количество чеков"
@@ -136,6 +138,16 @@ def render_hookah_products_block(
         hide_index=True,
         height=_financial_dataframe_height(FOCUS_TABLE_VISIBLE_ROWS),
         row_height=FINANCIAL_TABLE_ROW_HEIGHT_PX,
+        column_config={
+            COL_METRIC: st.column_config.TextColumn(
+                COL_METRIC,
+                width=HOOKAH_METRIC_COL_WIDTH_PX,
+            ),
+            COL_VALUE: st.column_config.TextColumn(
+                COL_VALUE,
+                width=HOOKAH_VALUE_COL_WIDTH_PX,
+            ),
+        },
     )
 
 
