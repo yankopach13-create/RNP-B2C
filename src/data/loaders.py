@@ -44,6 +44,7 @@ class AppData:
     category_order_general: Optional[list[str]]
     turnover_categories: Optional[list[str]]
     shops_order: Optional[list[str]]
+    coal_weight: Optional[pd.DataFrame] = None
 
 _APP_DATA_OPTIONAL_FIELDS = (
     "focus_hookah",
@@ -55,6 +56,7 @@ _APP_DATA_OPTIONAL_FIELDS = (
     "excise_liquid_report",
     "excise_from_sales_skus",
     "turnover_categories",
+    "coal_weight",
 )
 
 
@@ -91,6 +93,7 @@ def normalize_app_data(data: AppData | None) -> AppData | None:
             category_order_general=getattr(data, "category_order_general", None),
             turnover_categories=getattr(data, "turnover_categories", None),
             shops_order=getattr(data, "shops_order", None),
+            coal_weight=getattr(data, "coal_weight", None),
         )
 
     coerced_skus = coerce_excise_from_sales_skus(data.excise_from_sales_skus)
@@ -200,6 +203,7 @@ def _load_reference_batch() -> dict[str, pd.DataFrame]:
         refs.REF_FOCUS,
         refs.REF_TURNOVER_CATEGORIES,
         refs.REF_EXCISE_FROM_SALES,
+        refs.REF_COAL_WEIGHT,
     ]
     try:
         return refs.load_all_references(keys)
@@ -264,6 +268,17 @@ def _turnover_categories_from_batch(
         return None
     categories = _column_names_from_reference(turnover_df, TURNOVER_CATEGORIES_COLUMN)
     return categories or None
+
+
+def _coal_weight_from_batch(batch: dict[str, pd.DataFrame]) -> Optional[pd.DataFrame]:
+    """Лист Ves: «Товар ур.4» и «Вес в кг». Нет листа — килограммы в Общем РНП пустые."""
+    refs = _references()
+    weight_df = batch.get(refs.REF_COAL_WEIGHT)
+    if weight_df is None or weight_df.empty:
+        return None
+    weight_df = weight_df.copy()
+    weight_df.columns = weight_df.columns.astype(str).str.strip()
+    return weight_df
 
 
 def _excise_from_sales_skus_from_batch(batch: dict[str, pd.DataFrame]) -> frozenset[str]:
@@ -342,6 +357,7 @@ def load_all_data(files) -> AppData:
     category_order_rnp, category_order_general = _category_order_from_batch(ref_batch)
     turnover_categories = _turnover_categories_from_batch(ref_batch)
     excise_from_sales_skus = _excise_from_sales_skus_from_batch(ref_batch)
+    coal_weight_df = _coal_weight_from_batch(ref_batch)
 
     lfl_df = None
     if getattr(files, "lfl", None):
@@ -482,4 +498,5 @@ def load_all_data(files) -> AppData:
         category_order_general=category_order_general,
         turnover_categories=turnover_categories,
         shops_order=shops_order,
+        coal_weight=coal_weight_df,
     )

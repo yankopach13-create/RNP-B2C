@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from features.client_segments import compute_segment_revenue
+from features.report_cache import cached_report, frame_token
 from features.clients import COL_METRIC
 from features.general_rnp import (
     COL_REPORT_WEEK_PREFIX,
@@ -107,6 +108,16 @@ def render_ai_report_b2c(
     )
 
 
+@cached_report(
+    "ai_report",
+    lambda sales_df, checks_clients_df, *, client_segments_df=None, report_week=None, week_column_label=None: (
+        frame_token(sales_df),
+        frame_token(checks_clients_df),
+        frame_token(client_segments_df),
+        report_week,
+        week_column_label,
+    ),
+)
 def build_ai_report_table(
     sales_df: pd.DataFrame | None,
     checks_clients_df: pd.DataFrame | None,

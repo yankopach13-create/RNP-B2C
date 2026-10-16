@@ -4,6 +4,7 @@ import streamlit as st
 from config.constants import GROUP_ORDER
 from data.references import REF_FOCUS, get_reference_label
 from features.group_labels import is_signet_boosters_group, normalize_group_label
+from features.report_cache import cached_report, frame_token
 
 EXCLUDED_GROUPS = {"Интернет-магазин"}
 _INVALID_LABELS = {"", "nan", "none", "<na>"}
@@ -52,6 +53,10 @@ def render_focus_block(
     st.dataframe(display_df, **df_kwargs)
 
 
+@cached_report(
+    "focus",
+    lambda df_sales, focus_df: (frame_token(df_sales), frame_token(focus_df)),
+)
 def build_focus_display_df(
     df_sales: pd.DataFrame,
     focus_df: pd.DataFrame | None,

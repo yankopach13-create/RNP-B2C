@@ -8,6 +8,7 @@ from io import BytesIO
 import pandas as pd
 
 from features.excise_liquid import CATEGORY_LIQUID_25ML
+from features.report_cache import cached_report, frame_token
 
 VAT_NET_DIVISOR = 1.2
 
@@ -882,6 +883,15 @@ def format_liquid_margin_pct(value: float | None) -> str:
     return f"{value:.1f}%".replace(".", ",")
 
 
+@cached_report(
+    "liquid_margin_summary",
+    lambda sales_original, sales_adjusted, *, lfl_week=None, report_week=None: (
+        frame_token(sales_original),
+        frame_token(sales_adjusted),
+        lfl_week,
+        report_week,
+    ),
+)
 def build_liquid_margin_category_summary(
     sales_original: pd.DataFrame,
     sales_adjusted: pd.DataFrame | None,

@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from features.categories import apply_category_reference
+from features.report_cache import cached_report, frame_token, seq_token
 from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     _full_table_height,
@@ -80,6 +81,16 @@ def render_lfl_block(
     )
 
 
+@cached_report(
+    "lfl_factor",
+    lambda lfl_df, categories_df, lfl_week=None, report_week=None, category_order_rnp=None: (
+        frame_token(lfl_df),
+        frame_token(categories_df),
+        lfl_week,
+        report_week,
+        seq_token(category_order_rnp),
+    ),
+)
 def build_lfl_factor_table(
     lfl_df: pd.DataFrame | None,
     categories_df: pd.DataFrame | None,

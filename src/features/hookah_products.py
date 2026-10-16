@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from features.data_prep import filter_sales_by_report_week
+from features.report_cache import cached_report, frame_token
 from features.metrics import (
     FINANCIAL_TABLE_ROW_HEIGHT_PX,
     _financial_dataframe_height,
@@ -152,6 +153,15 @@ def render_hookah_products_block(
     )
 
 
+@cached_report(
+    "hookah_metrics",
+    lambda *, sales_df=None, focus_hookah=None, groups_df=None, report_week=None: (
+        frame_token(sales_df),
+        frame_token(focus_hookah),
+        frame_token(groups_df),
+        report_week,
+    ),
+)
 def _compute_hookah_metrics(
     *,
     sales_df: pd.DataFrame | None,

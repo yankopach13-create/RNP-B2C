@@ -109,9 +109,20 @@ def build_rnp_b2c_excel_bytes(
     data: AppData,
     prepared,
     week_config: WeekCalculationConfig | None,
+    *,
+    sales_with_margins: pd.DataFrame | None = None,
+    lfl_with_margins: pd.DataFrame | None = None,
+    margins_ready: bool = False,
 ) -> bytes | None:
     """Возвращает содержимое xlsx или None, если нет листов для экспорта."""
-    sheets = collect_rnp_b2c_sheets(data, prepared, week_config)
+    sheets = collect_rnp_b2c_sheets(
+        data,
+        prepared,
+        week_config,
+        sales_with_margins=sales_with_margins,
+        lfl_with_margins=lfl_with_margins,
+        margins_ready=margins_ready,
+    )
     if not sheets:
         return None
 
@@ -143,19 +154,28 @@ def collect_rnp_b2c_sheets(
     data: AppData,
     prepared,
     week_config: WeekCalculationConfig | None,
+    *,
+    sales_with_margins: pd.DataFrame | None = None,
+    lfl_with_margins: pd.DataFrame | None = None,
+    margins_ready: bool = False,
 ) -> list[ExcelSheetSpec]:
     sheets: list[ExcelSheetSpec] = []
     report_week = week_config.report_week if week_config else None
     lfl_week = week_config.lfl_week if week_config else None
 
-    df = prepared.df if prepared is not None else None
-    df = _with_liquid_margins(df, data, week_config)
-    lfl_df = _with_liquid_margins(
-        data.lfl,
-        data,
-        week_config,
-        apply_categories=True,
-    )
+    if margins_ready:
+        # Те же кадры, что уже показаны в отчёте, без второго пересчёта маржи.
+        df = sales_with_margins
+        lfl_df = lfl_with_margins
+    else:
+        df = prepared.df if prepared is not None else None
+        df = _with_liquid_margins(df, data, week_config)
+        lfl_df = _with_liquid_margins(
+            data.lfl,
+            data,
+            week_config,
+            apply_categories=True,
+        )
     df_report = _drop_excluded_groups(_report_sales_df(df, data.sales, week_config))
     groups_order = _filter_groups_order_list(data.groups_order_rnp)
 

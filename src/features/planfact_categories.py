@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from config.constants import CATEGORY_COLUMN_GENERAL
+from features.report_cache import cached_report, frame_token, seq_token
 from features.categories import (
     _is_empty_level,
     _key_level3,
@@ -89,6 +90,17 @@ def _planfact_match_key(rnp: object, general: object) -> str:
     return rnp_key
 
 
+@cached_report(
+    "planfact_categories",
+    lambda sales_df, groups_df=None, shops_order=None, groups_order_rnp=None, report_week=None, categories_df=None: (
+        frame_token(sales_df),
+        frame_token(groups_df),
+        seq_token(shops_order),
+        seq_token(groups_order_rnp),
+        report_week,
+        frame_token(categories_df),
+    ),
+)
 def build_planfact_categories_table(
     sales_df: pd.DataFrame | None,
     groups_df: pd.DataFrame | None = None,

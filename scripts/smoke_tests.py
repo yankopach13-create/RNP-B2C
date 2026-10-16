@@ -540,6 +540,56 @@ def test_consumables_nesting_values() -> None:
     )
 
 
+def test_general_rnp_coal_weight_kg() -> None:
+    """«Уголь в кг» = штуки × вес из Ves; строка «Уголь» остаётся в штуках."""
+    from features.coal_weight import coal_kg_warnings
+    from features.clients import COL_METRIC
+    from features.general_rnp import build_general_rnp_table
+
+    sku_pack = "Уголь Кокосовый Izzy Coco 25мм ( упаковка по 72 кубиков )"
+    sku_small = "Уголь Кокосовый Izzy Coco 25мм ( упаковка по 6 кубика ) NEW"
+    sku_missing = "Уголь без веса"
+    sales = pd.DataFrame(
+        {
+            "Категория": ["Уголь", "Уголь", "Уголь", "ОЭС 2 мл"],
+            "Категория товара Общий РНП:": ["Уголь", "Уголь", "Уголь", "ОЭС 2 мл"],
+            "Товар ур.4": [sku_pack, f"  {sku_small.upper()}  ", sku_missing, "Жижа"],
+            "Количество": [80, 9, 10, 3],
+            "Продажи с НДС": [1, 1, 1, 1],
+            "Маржа": [1, 1, 1, 1],
+            "Неделя": [10, 10, 10, 10],
+        }
+    )
+    weights = pd.DataFrame(
+        {
+            "Товар ур.4": [sku_pack, sku_small],
+            "Вес в кг": ["1", "0,08"],
+        }
+    )
+    table = build_general_rnp_table(
+        sales,
+        None,
+        report_week=10,
+        category_order_general=["Уголь", "Уголь в кг", "ОЭС 2 мл"],
+        coal_weight_df=weights,
+    )
+    week_col = "Отчётная неделя (10)"
+    metrics = dict(zip(table[COL_METRIC], table[week_col]))
+    _assert(metrics["Уголь, шт."] == "99", "coal pieces")
+    _assert(metrics["Уголь в кг"] == "80,7", "coal kg")
+    _assert(metrics["ОЭС 2 мл , шт."] == "3", "other category")
+    warnings = coal_kg_warnings(sales, weights, ["Уголь в кг"])
+    _assert(any(sku_missing in message for message in warnings), "missing weight")
+    empty = build_general_rnp_table(
+        sales,
+        None,
+        report_week=10,
+        category_order_general=["Уголь в кг"],
+    )
+    empty_metrics = dict(zip(empty[COL_METRIC], empty[week_col]))
+    _assert(empty_metrics["Уголь в кг"] == "", "no ves")
+
+
 def test_planfact_categories_table() -> None:
     sales = pd.DataFrame(
         {
@@ -1345,6 +1395,7 @@ OFFLINE_TESTS = [
     test_checks_no_bk_pcts,
     test_consumables_nesting_values,
     test_excel_export_consumables_sheet,
+    test_general_rnp_coal_weight_kg,
     test_planfact_categories_table,
     test_planfact_uses_slash_not_general_override,
     test_turnover_by_level4,

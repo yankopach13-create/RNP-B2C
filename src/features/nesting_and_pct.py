@@ -11,6 +11,7 @@ from config.constants import (
     PCT_NO_BK_COLUMN_SHOPS,
 )
 from data.references import REF_PCT_NO_BK, get_reference_label
+from features.report_cache import cached_report, frame_token
 from features.checks_no_bk import (
     COL_PCT_NO_BK,
     _build_shop_group_map,
@@ -45,6 +46,15 @@ _VALUE_COL_WIDTH_PX = 100
 BLOCK_TITLE = "Вложенность и % без БК"
 
 
+@cached_report(
+    "nesting_pct",
+    lambda reference_df=None, nesting_upload=None, no_bk_upload=None, groups_df=None: (
+        frame_token(reference_df),
+        frame_token(nesting_upload),
+        frame_token(no_bk_upload),
+        frame_token(groups_df),
+    ),
+)
 def build_nesting_and_pct_table(
     reference_df: pd.DataFrame | None = None,
     nesting_upload: pd.DataFrame | None = None,

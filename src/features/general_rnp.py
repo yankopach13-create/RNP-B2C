@@ -6,6 +6,12 @@ import pandas as pd
 import streamlit as st
 
 from config.constants import CATEGORY_COLUMN_GENERAL
+from features.coal_weight import (
+    COAL_KG_CATEGORY,
+    coal_kg_warnings,
+    format_coal_kg,
+    is_coal_kg_category,
+)
 from features.client_segments import compute_segment_client_metrics
 from features.clients import (
     COL_CUMULATIVE,
@@ -17,6 +23,7 @@ from features.clients import (
     _compute_client_metrics,
     _prepare_checks_clients,
 )
+from features.report_cache import cached_report, frame_token, seq_token
 from features.data_prep import (
     filter_sales_by_report_week,
     filter_sales_cumulative_to_week,
@@ -42,11 +49,11 @@ _METRICS_AVG_CHECK_DECIMALS = frozenset({"СЧ", "С БК", "Без БК"})
 
 
 def _sheets_friendly_cell(
-    value: object, *, two_decimal_places: bool = False
+    value: object, *, decimal_places: int | None = None
 ) -> str:
     """
     Формат для копирования в Google Таблицы: без группировки тысяч.
-    По умолчанию — целое без дробной части; с two_decimal_places — два знака после запятой (запятая).
+    По умолчанию — целое без дробной части; decimal_places — столько знаков после запятой.
     Проценты: всегда два знака в числовой части, знак % сохраняется.
     """
     if value is None:
@@ -69,8 +76,8 @@ def _sheets_friendly_cell(
         v = float(collapsed.replace(",", "."))
     except ValueError:
         return s
-    if two_decimal_places:
-        return f"{v:.2f}".replace(".", ",")
+    if decimal_places is not None and decimal_places > 0:
+        return f"{v:.{decimal_places}f}".replace(".", ",")
     return str(int(round(v)))
 
 
@@ -79,9 +86,11 @@ def _apply_sheets_number_format(
     value_columns: tuple[str, ...],
     *,
     avg_check_metrics: frozenset[str] | None = None,
+    one_decimal_metrics: frozenset[str] | None = None,
 ) -> pd.DataFrame:
-    """Приводит числовые ячейки: целые без «,00»; дробь только для СЧ/среднего чека и процентов."""
+    """Приводит числовые ячейки: целые без «,00»; дробь для СЧ и для килограммов угля."""
     decimal_labels = avg_check_metrics or _METRICS_AVG_CHECK_DECIMALS
+    one_decimal_labels = one_decimal_metrics or frozenset()
     out = df.copy()
     if COL_METRIC not in out.columns:
         return out
@@ -91,10 +100,13 @@ def _apply_sheets_number_format(
         for idx in out.index:
             raw = out.at[idx, col]
             metric = str(out.at[idx, COL_METRIC]).strip()
-            use_decimals = metric in decimal_labels
-            out.at[idx, col] = _sheets_friendly_cell(
-                raw, two_decimal_places=use_decimals
-            )
+            if metric in one_decimal_labels:
+                places: int | None = 1
+            elif metric in decimal_labels:
+                places = 2
+            else:
+                places = None
+            out.at[idx, col] = _sheets_friendly_cell(raw, decimal_places=places)
     return out
 
 
@@ -171,6 +183,9 @@ def _general_category_metric_rows(
     for gen in order:
         if _is_skipped_general_category(gen):
             continue
+        if is_coal_kg_category(gen):
+            rows.append((COAL_KG_CATEGORY, COAL_KG_CATEGORY))
+            continue
         label = label_by_source.get(gen, f"{gen}, шт.")
         rows.append((label, _general_category_source(gen)))
     return rows
@@ -183,6 +198,7 @@ def render_general_rnp_b2c(
     client_segments_df: pd.DataFrame | None = None,
     report_week: int | None = None,
     category_order_general: list[str] | None = None,
+    coal_weight_df: pd.DataFrame | None = None,
 ) -> None:
     """Одна таблица: метрики РНП B2C + пустые строки по ТЗ."""
     report_week = _resolve_report_week(sales_df, checks_clients_df, report_week)
@@ -199,7 +215,11 @@ def render_general_rnp_b2c(
         report_week=report_week,
         week_column_label=week_col,
         category_order_general=category_order_general,
+        coal_weight_df=coal_weight_df,
     )
+    _, df_week = _split_sales_frames(sales_df, report_week)
+    for message in coal_kg_warnings(df_week, coal_weight_df, category_order_general):
+        st.warning(message)
     st.dataframe(
         table,
         use_container_width=True,
@@ -212,6 +232,18 @@ def render_general_rnp_b2c(
     )
 
 
+@cached_report(
+    "general_rnp",
+    lambda sales_df, checks_clients_df, *, client_segments_df=None, report_week=None, week_column_label=None, category_order_general=None, coal_weight_df=None: (
+        frame_token(sales_df),
+        frame_token(checks_clients_df),
+        frame_token(client_segments_df),
+        report_week,
+        week_column_label,
+        seq_token(category_order_general),
+        frame_token(coal_weight_df),
+    ),
+)
 def build_general_rnp_table(
     sales_df: pd.DataFrame | None,
     checks_clients_df: pd.DataFrame | None,
@@ -220,6 +252,7 @@ def build_general_rnp_table(
     report_week: int | None = None,
     week_column_label: str | None = None,
     category_order_general: list[str] | None = None,
+    coal_weight_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     report_week = _resolve_report_week(sales_df, checks_clients_df, report_week)
     week_col = week_column_label or (
@@ -272,13 +305,13 @@ def build_general_rnp_table(
     empty_row("Кол-во нарушений")
 
     for label, source in _general_category_metric_rows(category_order_general):
-        rows.append(
-            [
-                label,
-                _category_qty(totals_general_cum, source),
-                _category_qty(totals_general_week, source),
-            ]
-        )
+        if is_coal_kg_category(label):
+            cum_value = format_coal_kg(df_cum, coal_weight_df)
+            week_value = format_coal_kg(df_week, coal_weight_df)
+        else:
+            cum_value = _category_qty(totals_general_cum, source)
+            week_value = _category_qty(totals_general_week, source)
+        rows.append([label, cum_value, week_value])
 
     empty_row("Кол-во брака")
     empty_row("% брака")
@@ -293,7 +326,11 @@ def build_general_rnp_table(
 
     table = pd.DataFrame(rows, columns=[COL_METRIC, COL_CUMULATIVE, week_col])
     table = _cumulative_only_clients_bk(table)
-    return _apply_sheets_number_format(table, (COL_CUMULATIVE, week_col))
+    return _apply_sheets_number_format(
+        table,
+        (COL_CUMULATIVE, week_col),
+        one_decimal_metrics=frozenset({COAL_KG_CATEGORY}),
+    )
 
 
 def _resolve_report_week(

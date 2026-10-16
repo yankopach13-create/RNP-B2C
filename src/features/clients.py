@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from features.client_segments import compute_segment_client_metrics
+from features.report_cache import cached_report_value, frame_token
 
 CHECKS_CLIENTS_COLUMNS = [
     "Год-Неделя",
@@ -52,27 +53,23 @@ def render_client_block(
         return
 
     try:
-        df = _prepare_checks_clients(checks_clients)
+        table, week_label = cached_report_value(
+            "client_block",
+            (
+                frame_token(checks_clients),
+                frame_token(client_segments),
+                report_week,
+            ),
+            lambda: _assemble_client_table(
+                checks_clients,
+                report_week,
+                client_segments,
+            ),
+        )
     except ValueError as exc:
         st.error(str(exc))
         return
 
-    if report_week is None:
-        report_week = int(df[COL_WEEK].max())
-
-    week_label = f"Неделя {report_week}"
-    week_df = df[df[COL_WEEK] == report_week]
-    metrics = _compute_client_metrics(df, week_df)
-
-    clients_bk_week = _clients_bk_week_count(week_df)
-    metrics.update(
-        compute_segment_client_metrics(
-            client_segments, report_week, clients_bk_week
-        )
-    )
-
-    rows = _build_metric_rows(metrics)
-    table = pd.DataFrame(rows, columns=[COL_METRIC, COL_CUMULATIVE, week_label])
     df_kwargs: dict = {
         "use_container_width": True,
         "hide_index": True,
@@ -82,6 +79,31 @@ def render_client_block(
     if table_height is not None:
         df_kwargs["height"] = table_height
     st.dataframe(table, **df_kwargs)
+
+
+def _assemble_client_table(
+    checks_clients: pd.DataFrame,
+    report_week: int | None,
+    client_segments: pd.DataFrame | None,
+) -> tuple[pd.DataFrame, str]:
+    """Таблица клиентского блока. ValueError — нет нужных столбцов."""
+    df = _prepare_checks_clients(checks_clients)
+    if report_week is None:
+        report_week = int(df[COL_WEEK].max())
+
+    week_label = f"Неделя {report_week}"
+    week_df = df[df[COL_WEEK] == report_week]
+    metrics = _compute_client_metrics(df, week_df)
+    metrics.update(
+        compute_segment_client_metrics(
+            client_segments,
+            report_week,
+            _clients_bk_week_count(week_df),
+        )
+    )
+    rows = _build_metric_rows(metrics)
+    table = pd.DataFrame(rows, columns=[COL_METRIC, COL_CUMULATIVE, week_label])
+    return table, week_label
 
 
 def _client_block_column_config(

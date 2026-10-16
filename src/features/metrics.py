@@ -24,6 +24,13 @@ from features.reference_orders import (
     resolve_shops_order,
     resolve_turnover_categories,
 )
+from features.report_cache import (
+    cached_report,
+    frame_token,
+    lookup_report_value,
+    seq_token,
+    store_report_value,
+)
 from features.turnover import prepare_turnover_table
 
 
@@ -298,6 +305,14 @@ def _triple_metric_rows(group: str, revenue: float, margin: float) -> list[_Fina
     ]
 
 
+@cached_report(
+    "financial_b2c_rows",
+    lambda df, client_segments_df, report_week: (
+        frame_token(df),
+        frame_token(client_segments_df),
+        report_week,
+    ),
+)
 def _build_financial_b2c_rows(
     df: pd.DataFrame,
     client_segments_df: pd.DataFrame | None,
@@ -427,6 +442,10 @@ def _filter_groups_for_category_subdivisions(group_cols: list[str]) -> list[str]
     return [g for g in group_cols if not _is_signet_boosters_group(g)]
 
 
+@cached_report(
+    "financial_group_rows",
+    lambda df, groups_order_rnp=None: (frame_token(df), seq_token(groups_order_rnp)),
+)
 def _build_financial_group_rows(
     df: pd.DataFrame,
     groups_order_rnp: list[str] | None = None,
@@ -556,6 +575,10 @@ def _category_totals(df: pd.DataFrame) -> pd.Series:
     return df.groupby("Категория")["Количество"].sum()
 
 
+@cached_report(
+    "category_sales_general",
+    lambda df, category_order_rnp: (frame_token(df), seq_token(category_order_rnp)),
+)
 def _build_category_sales_general_rows(
     df: pd.DataFrame,
     category_order_rnp: list[str] | None,
@@ -576,6 +599,14 @@ def _build_category_sales_general_rows(
     return rows
 
 
+@cached_report(
+    "category_sales_groups",
+    lambda df, category_order_rnp, groups_order_rnp=None: (
+        frame_token(df),
+        seq_token(category_order_rnp),
+        seq_token(groups_order_rnp),
+    ),
+)
 def _build_category_sales_group_rows(
     df: pd.DataFrame,
     category_order_rnp: list[str] | None,
@@ -675,6 +706,50 @@ def render_liquid_margin_audit_block(
         st.warning(f"Не удалось подготовить проверку себестоимости: {type(exc).__name__}")
 
 
+_LIQUID_AUDIT_PREPARE_KEY = "liquid_audit_prepare_requested"
+
+
+def _arm_liquid_audit_prepare(identity: tuple) -> None:
+    """Запрос сборки Excel проверки — сам файл считается на следующем прогоне."""
+    st.session_state[_LIQUID_AUDIT_PREPARE_KEY] = identity
+
+
+def _frame_has_liquid_rows(df: pd.DataFrame | None) -> bool:
+    """Есть строки «Жидкость 25 мл» — тот же критерий, что у пересчёта маржи."""
+    from features.excise_liquid import CATEGORY_LIQUID_25ML
+    from features.liquid_margin import COL_CATEGORY, COL_MARGIN
+
+    if df is None or df.empty:
+        return False
+    if COL_CATEGORY not in df.columns or COL_MARGIN not in df.columns:
+        return False
+    labels = df[COL_CATEGORY].astype(str).str.strip()
+    return bool((labels == CATEGORY_LIQUID_25ML).any())
+
+
+def _liquid_audit_identity(
+    sales_original,
+    sales_adjusted,
+    cost_df,
+    excise_lfl,
+    excise_report,
+    lfl_week,
+    report_week,
+    excise_from_sales_skus,
+) -> tuple:
+    skus = tuple(sorted(excise_from_sales_skus or ()))
+    return (
+        frame_token(sales_original),
+        frame_token(sales_adjusted),
+        frame_token(cost_df),
+        frame_token(excise_lfl),
+        frame_token(excise_report),
+        lfl_week,
+        report_week,
+        skus,
+    )
+
+
 def _render_liquid_margin_audit_block_impl(
     sales_original: pd.DataFrame,
     sales_adjusted: pd.DataFrame | None,
@@ -691,6 +766,107 @@ def _render_liquid_margin_audit_block_impl(
     export_liquid_margin_audit_workbook,
     liquid_margin_audit_filename,
 ) -> None:
+    def _week_sales(df: pd.DataFrame | None, week: int | None):
+        if df is None or df.empty or week is None:
+            return None
+        filtered = filter_sales_by_report_week(df, week)
+        return filtered if not filtered.empty else None
+
+    report_original = _week_sales(sales_original, report_week)
+    lfl_original = _week_sales(sales_original, lfl_week)
+    report_has_liquid = _frame_has_liquid_rows(report_original)
+    lfl_has_liquid = (
+        lfl_week is not None
+        and lfl_week != report_week
+        and _frame_has_liquid_rows(lfl_original)
+    )
+    if not report_has_liquid and not lfl_has_liquid:
+        st.caption("Нет строк категории «Жидкость 25 мл» для проверки.")
+        return
+
+    category_summary = build_liquid_margin_category_summary(
+        sales_original,
+        sales_adjusted,
+        lfl_week=lfl_week,
+        report_week=report_week,
+    )
+    identity = _liquid_audit_identity(
+        sales_original,
+        sales_adjusted,
+        cost_df,
+        excise_lfl,
+        excise_report,
+        lfl_week,
+        report_week,
+        excise_from_sales_skus,
+    )
+    found, excel_bytes = lookup_report_value("liquid_audit_xlsx", identity)
+    if (
+        not found
+        and st.session_state.get(_LIQUID_AUDIT_PREPARE_KEY) == identity
+    ):
+        st.session_state.pop(_LIQUID_AUDIT_PREPARE_KEY, None)
+        with st.spinner("Формируем проверку…"):
+            excel_bytes = _build_liquid_audit_workbook(
+                sales_original=sales_original,
+                sales_adjusted=sales_adjusted,
+                cost_df=cost_df,
+                excise_lfl=excise_lfl,
+                excise_report=excise_report,
+                lfl_week=lfl_week,
+                report_week=report_week,
+                excise_from_sales_skus=excise_from_sales_skus,
+                category_summary=category_summary,
+                filter_sales_by_report_week=filter_sales_by_report_week,
+                build_liquid_margin_audit=build_liquid_margin_audit,
+                export_liquid_margin_audit_workbook=export_liquid_margin_audit_workbook,
+            )
+        store_report_value("liquid_audit_xlsx", identity, excel_bytes)
+        found = excel_bytes is not None
+
+    if found and excel_bytes:
+        st.download_button(
+            label="Скачать проверку в Excel",
+            data=excel_bytes,
+            file_name=liquid_margin_audit_filename(report_week, lfl_week),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="secondary",
+            use_container_width=True,
+            key="download_liquid_margin_audit",
+        )
+    else:
+        st.button(
+            "Скачать проверку в Excel",
+            key="prepare_liquid_margin_audit",
+            type="secondary",
+            use_container_width=True,
+            on_click=_arm_liquid_audit_prepare,
+            args=(identity,),
+        )
+    _render_liquid_margin_audit_reference(
+        excise_lfl=excise_lfl,
+        excise_report=excise_report,
+        category_summary=category_summary,
+    )
+
+
+def _build_liquid_audit_workbook(
+    *,
+    sales_original,
+    sales_adjusted,
+    cost_df,
+    excise_lfl,
+    excise_report,
+    lfl_week,
+    report_week,
+    excise_from_sales_skus,
+    category_summary,
+    filter_sales_by_report_week,
+    build_liquid_margin_audit,
+    export_liquid_margin_audit_workbook,
+) -> bytes | None:
+    """Детализация маржи жидкости в xlsx — те же вызовы, что раньше на каждый rerun."""
+
     def _week_sales(df: pd.DataFrame | None, week: int | None):
         if df is None or df.empty or week is None:
             return None
@@ -729,15 +905,7 @@ def _render_liquid_margin_audit_block_impl(
         )
 
     if report_audit is None and lfl_audit is None:
-        st.caption("Нет строк категории «Жидкость 25 мл» для проверки.")
-        return
-
-    category_summary = build_liquid_margin_category_summary(
-        sales_original,
-        sales_adjusted,
-        lfl_week=lfl_week,
-        report_week=report_week,
-    )
+        return None
 
     report_detail = report_summary = lfl_detail = lfl_summary = None
     if report_audit is not None:
@@ -745,7 +913,7 @@ def _render_liquid_margin_audit_block_impl(
     if lfl_audit is not None:
         lfl_detail, lfl_summary = lfl_audit
 
-    excel_bytes = export_liquid_margin_audit_workbook(
+    return export_liquid_margin_audit_workbook(
         report_detail=report_detail,
         report_summary=report_summary,
         lfl_detail=lfl_detail,
@@ -753,20 +921,6 @@ def _render_liquid_margin_audit_block_impl(
         category_summary=category_summary,
         lfl_week=lfl_week,
         report_week=report_week,
-    )
-    st.download_button(
-        label="Скачать проверку в Excel",
-        data=excel_bytes,
-        file_name=liquid_margin_audit_filename(report_week, lfl_week),
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="secondary",
-        use_container_width=True,
-        key="download_liquid_margin_audit",
-    )
-    _render_liquid_margin_audit_reference(
-        excise_lfl=excise_lfl,
-        excise_report=excise_report,
-        category_summary=category_summary,
     )
 
 
@@ -950,6 +1104,15 @@ def _should_list_shops_in_shop_economy(group: str) -> bool:
     return not _is_internet_shop_group(group)
 
 
+@cached_report(
+    "shop_economy",
+    lambda df, shops_order=None, groups_order_rnp=None, groups_df=None: (
+        frame_token(df),
+        seq_token(shops_order),
+        seq_token(groups_order_rnp),
+        frame_token(groups_df),
+    ),
+)
 def _build_shop_economy_table(
     df: pd.DataFrame,
     shops_order: list[str] | None = None,

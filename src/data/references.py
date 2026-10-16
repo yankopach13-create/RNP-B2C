@@ -37,6 +37,7 @@ REF_FOCUS = "focus"
 REF_TURNOVER_CATEGORIES = "turnover_categories"
 REF_PCT_NO_BK = "pct_no_bk"
 REF_EXCISE_FROM_SALES = "excise_from_sales"
+REF_COAL_WEIGHT = "coal_weight"
 
 _REFERENCE_META: dict[str, dict[str, Any]] = {
     REF_SHOP_GROUPS: {
@@ -78,6 +79,11 @@ _REFERENCE_META: dict[str, dict[str, Any]] = {
         "sheet": "акциз_из_продаж",
         "local": ("excise_from_sales.xlsx",),
         "title": "Акциз из продаж (SKU)",
+    },
+    REF_COAL_WEIGHT: {
+        "sheet": "Ves",
+        "local": ("ves.xlsx", "Ves.xlsx"),
+        "title": "Вес угля",
     },
 }
 

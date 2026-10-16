@@ -41,7 +41,10 @@ from features.ai_report import render_ai_report_b2c
 from features.general_rnp import render_general_rnp_b2c
 from features.planfact_categories import render_planfact_categories_block
 from ui.data_session import (
+    DATA_VERSION_KEY,
     DOWNLOAD_RNP_EXCEL_KEY,
+    excel_cache_key,
+    excel_cache_status,
     get_cached_excel_bytes,
     get_cached_turnover_table,
     get_df_report_cached,
@@ -119,6 +122,8 @@ def main():
     week_config: WeekCalculationConfig | None = None
     if data.sales is not None:
         week_config = _render_week_selectors(data.sales)
+    if week_config is None:
+        st.session_state.pop("week_calc_config", None)
 
     render_quick_reference_update(
         prepared.new_shops if prepared is not None else [],
@@ -134,29 +139,57 @@ def main():
     _render_rnp_b2c_header(data, prepared, week_config)
 
 
-def _render_excel_download_button(
-    data: AppData,
-    prepared,
-    week_config: WeekCalculationConfig | None,
-) -> None:
-    """Скачивание Excel: сборка в кэш при необходимости, одно нажатие на загрузку."""
-    report_week = week_config.report_week if week_config else None
+_EXCEL_PREPARE_KEY = "excel_prepare_requested"
 
-    @st.fragment
-    def _download_fragment() -> None:
+
+def _arm_excel_prepare(cache_key: tuple) -> None:
+    """Помечает, что Excel нужно собрать на следующем прогоне фрагмента."""
+    st.session_state[_EXCEL_PREPARE_KEY] = cache_key
+
+
+@st.fragment
+def _excel_download_fragment() -> None:
+    """Кнопка Excel: файл собирается после нажатия, не на каждом обновлении страницы."""
+    data = get_stored_app_data()
+    if data is None:
+        return
+    prepared = get_stored_prepared()
+    week_config = st.session_state.get("week_calc_config")
+    report_week = week_config.report_week if week_config else None
+    version = int(st.session_state.get(DATA_VERSION_KEY, 0))
+    request_key = excel_cache_key(week_config, version)
+    built, excel_bytes = excel_cache_status(week_config)
+    if not built and st.session_state.get(_EXCEL_PREPARE_KEY) == request_key:
         excel_bytes = get_cached_excel_bytes(data, prepared, week_config)
+        st.session_state.pop(_EXCEL_PREPARE_KEY, None)
+        built = True
+    if built and excel_bytes:
         st.download_button(
             label="Скачать РНП отчёт в Excel",
-            data=excel_bytes or b"",
+            data=excel_bytes,
             file_name=rnp_b2c_excel_filename(report_week),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="secondary",
             use_container_width=True,
             key=DOWNLOAD_RNP_EXCEL_KEY,
-            disabled=not excel_bytes,
         )
+        return
+    if built:
+        st.caption("Нет данных для выгрузки в Excel.")
+        return
+    st.button(
+        "Скачать РНП отчёт в Excel",
+        key="prepare_rnp_b2c_excel",
+        type="secondary",
+        use_container_width=True,
+        on_click=_arm_excel_prepare,
+        args=(request_key,),
+    )
 
-    _download_fragment()
+
+def _render_excel_download_button() -> None:
+    """Скачивание Excel вынесено во фрагмент, чтобы клик не пересчитывал таблицы."""
+    _excel_download_fragment()
 
 
 def _render_rnp_b2c_header(
@@ -190,10 +223,10 @@ def _render_rnp_b2c_header(
             st.session_state.show_rnp_b2c_block = not st.session_state.show_rnp_b2c_block
             st.rerun()
     with col_download:
-        _render_excel_download_button(data, prepared, week_config)
+        _render_excel_download_button()
 
     if st.session_state.show_rnp_b2c_block:
-        _render_rnp_b2c_results(data, prepared, week_config)
+        _fragment_rnp_b2c_results()
 
     st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
     general_toggle_label = (
@@ -217,16 +250,7 @@ def _render_rnp_b2c_header(
         st.empty()
 
     if st.session_state.show_general_rnp_b2c_block:
-        report_week = week_config.report_week if week_config else None
-        prepared_adj = get_prepared_with_liquid_margins(prepared, data, week_config)
-        sales_df = prepared_adj.df if prepared_adj is not None else data.sales
-        render_general_rnp_b2c(
-            sales_df,
-            data.checks_clients,
-            client_segments_df=data.client_segments,
-            report_week=report_week,
-            category_order_general=data.category_order_general,
-        )
+        _fragment_general_rnp_b2c()
 
     st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
     ai_toggle_label = (
@@ -248,15 +272,7 @@ def _render_rnp_b2c_header(
         st.empty()
 
     if st.session_state.show_ai_rnp_b2c_block:
-        report_week = week_config.report_week if week_config else None
-        prepared_adj = get_prepared_with_liquid_margins(prepared, data, week_config)
-        sales_df = prepared_adj.df if prepared_adj is not None else data.sales
-        render_ai_report_b2c(
-            sales_df,
-            data.checks_clients,
-            client_segments_df=data.client_segments,
-            report_week=report_week,
-        )
+        _fragment_ai_rnp_b2c()
 
 
 def _inject_rnp_block_styles() -> None:
@@ -341,6 +357,23 @@ def _inject_rnp_block_styles() -> None:
             opacity: 0.5;
             border-color: rgba(250, 250, 250, 0.35) !important;
         }
+        div.st-key-prepare_rnp_b2c_excel button[kind="secondary"],
+        div.st-key-prepare_liquid_margin_audit button[kind="secondary"] {
+            background: transparent !important;
+            color: inherit !important;
+            border: 1px solid rgba(250, 250, 250, 0.9) !important;
+            font-weight: 700 !important;
+            font-size: 1.05rem !important;
+            border-radius: 10px !important;
+            min-height: 44px !important;
+            padding: 0.5rem 1rem !important;
+        }
+        div.st-key-prepare_rnp_b2c_excel button[kind="secondary"]:hover,
+        div.st-key-prepare_liquid_margin_audit button[kind="secondary"]:hover {
+            background: rgba(255, 255, 255, 0.06) !important;
+            border-color: #ffffff !important;
+            color: inherit !important;
+        }
         @media (prefers-color-scheme: light) {
             div[data-testid="stDownloadButton"] button {
                 border-color: rgba(49, 51, 63, 0.55) !important;
@@ -349,6 +382,11 @@ def _inject_rnp_block_styles() -> None:
             div[data-testid="stDownloadButton"] button:hover {
                 border-color: rgb(49, 51, 63) !important;
                 background: rgba(49, 51, 63, 0.04) !important;
+            }
+            div.st-key-prepare_rnp_b2c_excel button[kind="secondary"],
+            div.st-key-prepare_liquid_margin_audit button[kind="secondary"] {
+                border-color: rgba(49, 51, 63, 0.55) !important;
+                color: rgb(49, 51, 63) !important;
             }
         }
         </style>
@@ -513,9 +551,67 @@ def _render_week_selectors(sales_df: pd.DataFrame) -> WeekCalculationConfig | No
             key="week_report",
             **select_kwargs,
         )
-    return WeekCalculationConfig(
-        lfl_week=int(lfl_week),
-        report_week=int(report_week),
+    return _store_week_config(
+        WeekCalculationConfig(
+            lfl_week=int(lfl_week),
+            report_week=int(report_week),
+        )
+    )
+
+
+def _store_week_config(config: WeekCalculationConfig) -> WeekCalculationConfig:
+    st.session_state["week_calc_config"] = config
+    return config
+
+
+@st.fragment
+def _fragment_rnp_b2c_results() -> None:
+    """РНП B2C отдельно от остальных блоков: клик внутри не пересчитывает их."""
+    data = get_stored_app_data()
+    if data is None:
+        return
+    _render_rnp_b2c_results(
+        data,
+        get_stored_prepared(),
+        st.session_state.get("week_calc_config"),
+    )
+
+
+@st.fragment
+def _fragment_general_rnp_b2c() -> None:
+    data = get_stored_app_data()
+    if data is None:
+        return
+    prepared = get_stored_prepared()
+    week_config = st.session_state.get("week_calc_config")
+    report_week = week_config.report_week if week_config else None
+    prepared_adj = get_prepared_with_liquid_margins(prepared, data, week_config)
+    sales_df = prepared_adj.df if prepared_adj is not None else data.sales
+    render_general_rnp_b2c(
+        sales_df,
+        data.checks_clients,
+        client_segments_df=data.client_segments,
+        report_week=report_week,
+        category_order_general=data.category_order_general,
+        coal_weight_df=getattr(data, "coal_weight", None),
+    )
+
+
+@st.fragment
+def _fragment_ai_rnp_b2c() -> None:
+    data = get_stored_app_data()
+    if data is None:
+        return
+    prepared = get_stored_prepared()
+    week_config = st.session_state.get("week_calc_config")
+    report_week = week_config.report_week if week_config else None
+    prepared_adj = get_prepared_with_liquid_margins(prepared, data, week_config)
+    sales_df = prepared_adj.df if prepared_adj is not None else data.sales
+    render_ai_report_b2c(
+        sales_df,
+        data.checks_clients,
+        client_segments_df=data.client_segments,
+        report_week=report_week,
     )
 
 

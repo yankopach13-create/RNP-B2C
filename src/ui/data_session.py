@@ -11,6 +11,7 @@ from features.categories import apply_category_reference
 from features.data_prep import PreparedSalesResult, filter_sales_by_report_week, prepare_sales_dataset
 from features.excise_liquid import WeekCalculationConfig
 from features.metrics import _build_turnover_summary
+from features.report_cache import REPORT_CACHE_STATE_KEY, REPORT_CACHE_VERSION_KEY
 
 if TYPE_CHECKING:
     from ui.upload_panel import UploadedFiles
@@ -47,6 +48,8 @@ def ensure_app_logic_version() -> None:
         DATA_VERSION_KEY,
         LIQUID_MARGIN_CACHE_KEY,
         LIQUID_MARGIN_CACHE_VERSION_KEY,
+        REPORT_CACHE_STATE_KEY,
+        REPORT_CACHE_VERSION_KEY,
         "run_analysis",
         "uploaded_files",
     ):
@@ -68,6 +71,8 @@ def _clear_derived_caches() -> None:
     st.session_state.pop(TURNOVER_CACHE_VERSION_KEY, None)
     st.session_state.pop(LIQUID_MARGIN_CACHE_KEY, None)
     st.session_state.pop(LIQUID_MARGIN_CACHE_VERSION_KEY, None)
+    st.session_state.pop(REPORT_CACHE_STATE_KEY, None)
+    st.session_state.pop(REPORT_CACHE_VERSION_KEY, None)
 
 
 def load_and_store_app_data(files: "UploadedFiles") -> tuple[AppData, PreparedSalesResult | None]:
@@ -168,12 +173,24 @@ def apply_liquid_margins(
     return adjusted
 
 
+def excel_cache_status(
+    week_config: WeekCalculationConfig | None,
+) -> tuple[bool, bytes | None]:
+    """(уже собирали, байты). Не запускает сборку."""
+    version = int(st.session_state.get(DATA_VERSION_KEY, 0))
+    key = excel_cache_key(week_config, version)
+    cache: dict = st.session_state.get(EXCEL_CACHE_KEY) or {}
+    if key not in cache:
+        return False, None
+    return True, cache[key]
+
+
 def get_cached_excel_bytes(
     data: AppData,
     prepared: PreparedSalesResult | None,
     week_config: WeekCalculationConfig | None,
 ) -> bytes | None:
-    """Сборка xlsx (с кэшем по неделям, акцизу и версии данных)."""
+    """Сборка xlsx (с кэшем по неделям и версии данных)."""
     version = int(st.session_state.get(DATA_VERSION_KEY, 0))
     key = excel_cache_key(week_config, version)
     cache: dict = st.session_state.setdefault(EXCEL_CACHE_KEY, {})
@@ -181,8 +198,18 @@ def get_cached_excel_bytes(
         return cache[key]
     from features.excel_export import build_rnp_b2c_excel_bytes
 
+    prepared_adj = get_prepared_with_liquid_margins(prepared, data, week_config)
+    sales_df = prepared_adj.df if prepared_adj is not None else None
+    lfl_df = get_lfl_with_liquid_margins(data, week_config)
     with st.spinner("Формируем Excel…"):
-        cache[key] = build_rnp_b2c_excel_bytes(data, prepared, week_config)
+        cache[key] = build_rnp_b2c_excel_bytes(
+            data,
+            prepared,
+            week_config,
+            sales_with_margins=sales_df,
+            lfl_with_margins=lfl_df,
+            margins_ready=True,
+        )
     return cache[key]
 
 
@@ -237,17 +264,31 @@ def get_lfl_with_liquid_margins(
     data: AppData,
     week_config: WeekCalculationConfig | None,
 ):
+    """LFL с категориями и маржой жидкости. Повторный вызов берёт готовый кадр."""
     if data.lfl is None:
         return None
+
+    version = int(st.session_state.get(DATA_VERSION_KEY, 0))
+    if st.session_state.get(LIQUID_MARGIN_CACHE_VERSION_KEY) != version:
+        st.session_state[LIQUID_MARGIN_CACHE_KEY] = {}
+        st.session_state[LIQUID_MARGIN_CACHE_VERSION_KEY] = version
+
+    ready_key = ("lfl-ready",) + _liquid_margin_cache_key("lfl", week_config, version)
+    cache: dict = st.session_state.setdefault(LIQUID_MARGIN_CACHE_KEY, {})
+    if ready_key in cache:
+        return cache[ready_key]
+
     lfl_df = data.lfl.copy()
     if data.categories is not None:
         lfl_df = apply_category_reference(lfl_df, data.categories)
-    return apply_liquid_margins(
+    adjusted = apply_liquid_margins(
         lfl_df,
         data,
         week_config,
         source_key="lfl",
     )
+    cache[ready_key] = adjusted
+    return adjusted
 
 
 def get_cached_turnover_table(data: AppData):
