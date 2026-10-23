@@ -38,6 +38,7 @@ from features.metrics import (
 from features.excise_liquid import WeekCalculationConfig
 from features.excel_export import rnp_b2c_excel_filename
 from features.ai_report import render_ai_report_b2c
+from features.master_file import render_master_file_block
 from features.general_rnp import render_general_rnp_b2c
 from features.planfact_categories import render_planfact_categories_block
 from ui.data_session import (
@@ -297,6 +298,9 @@ def _render_rnp_b2c_header(
             st.rerun()
     with col_master_spacer:
         st.empty()
+
+    if st.session_state.show_master_file_block:
+        _fragment_master_file()
 
 
 def _inject_rnp_block_styles() -> None:
@@ -658,6 +662,27 @@ def _fragment_ai_rnp_b2c() -> None:
         data.checks_clients,
         client_segments_df=data.client_segments,
         report_week=report_week,
+    )
+
+
+@st.fragment
+def _fragment_master_file() -> None:
+    data = get_stored_app_data()
+    if data is None:
+        return
+    prepared = get_stored_prepared()
+    week_config = st.session_state.get("week_calc_config")
+    sales_df = prepared.df if prepared is not None else data.sales
+    render_master_file_block(
+        getattr(data, "master_file", None),
+        data.categories,
+        sales_df,
+        week_config=week_config,
+        cost_df=data.liquid_cost,
+        excise_lfl=data.excise_liquid_lfl,
+        excise_report=data.excise_liquid_report,
+        excise_from_sales_skus=getattr(data, "excise_from_sales_skus", None),
+        shops_order=data.shops_order,
     )
 
 

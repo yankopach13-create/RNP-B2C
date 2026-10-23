@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pandas as pd
 
-from config.constants import CATEGORY_COLUMN_GENERAL, CATEGORY_COLUMN_RNP
+from config.constants import (
+    CATEGORY_COLUMN_GENERAL,
+    CATEGORY_COLUMN_MASTER,
+    CATEGORY_COLUMN_MASTER_LEGACY,
+    CATEGORY_COLUMN_RNP,
+)
+
+NO_MASTER_CATEGORY = "Без категории"
 
 # Разделитель пары «категория РНП / категория Общего РНП» в одной ячейке справочника.
 CATEGORY_PAIR_SEPARATOR = "/"
@@ -181,6 +188,61 @@ def get_level_maps(category_df: pd.DataFrame) -> tuple[dict, dict, dict]:
     maps = _build_level_maps(category_df)
     _LEVEL_MAPS_CACHE[cache_key] = maps
     return maps
+
+
+def master_category_column(category_df: pd.DataFrame | None) -> str | None:
+    """Фактическое имя столбца категории Мастер: новое имя, иначе старый «Разрез 1»."""
+    if category_df is None or getattr(category_df, "empty", True):
+        return None
+    by_stripped = {str(col).strip(): col for col in category_df.columns}
+    if CATEGORY_COLUMN_MASTER in by_stripped:
+        return by_stripped[CATEGORY_COLUMN_MASTER]
+    if CATEGORY_COLUMN_MASTER_LEGACY in by_stripped:
+        return by_stripped[CATEGORY_COLUMN_MASTER_LEGACY]
+    return None
+
+
+def list_master_categories(category_df: pd.DataFrame | None) -> list[str]:
+    """Уникальные непустые значения «Категория товара Мастер» в порядке справочника."""
+    column = master_category_column(category_df)
+    if column is None or category_df is None:
+        return []
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for raw in category_df[column].tolist():
+        label = _norm_cell(raw)
+        key = label.casefold()
+        if not label or key in seen:
+            continue
+        seen.add(key)
+        ordered.append(label)
+    return ordered
+
+
+def master_category_by_product(
+    category_df: pd.DataFrame | None,
+) -> dict[tuple[str, str], str]:
+    """Ключ (товар ур.2, товар ур.4) → «Категория товара Мастер».
+
+    Мастер-файл не содержит ур.3, поэтому сопоставление идёт по ур.2 и ур.4.
+    При нескольких строках справочника с одним ключом остаётся первое непустое значение.
+    """
+    if category_df is None:
+        return {}
+    frame = category_df.copy()
+    frame.columns = frame.columns.astype(str).str.strip()
+    column = master_category_column(frame)
+    if column is None:
+        return {}
+    mapping: dict[tuple[str, str], str] = {}
+    for _, row in frame.iterrows():
+        u2 = _norm_cell(row.get("Товар ур.2")).casefold()
+        u4 = _norm_cell(row.get("Товар ур.4")).casefold()
+        label = _norm_cell(row.get(column))
+        if not u2 or not u4 or not label:
+            continue
+        mapping.setdefault((u2, u4), label)
+    return mapping
 
 
 def reference_product_keys(category_df: pd.DataFrame) -> set[str]:

@@ -9,6 +9,8 @@ import pandas as pd
 
 from config.constants import (
     CATEGORY_COLUMN_GENERAL,
+    CATEGORY_COLUMN_MASTER,
+    CATEGORY_COLUMN_MASTER_LEGACY,
     CATEGORY_COLUMN_RNP,
     CATEGORY_ORDER_COLUMN_GENERAL,
     CATEGORY_ORDER_COLUMN_RNP,
@@ -55,6 +57,7 @@ class QuickProductEntry:
     u4_variants: list[str]
     category_pair: str
     new_category: QuickCategoryOrderEntry | None = None
+    master_category: str = ""
 
 
 def _try_load_reference(key: str) -> tuple[pd.DataFrame | None, str | None]:
@@ -300,13 +303,23 @@ def _mutate_category_order_insert(
     return df, added, None
 
 
+def _master_category_write_column(df: pd.DataFrame) -> str:
+    """Куда писать категорию Мастер: новый столбец, иначе оставшийся «Разрез 1»."""
+    if CATEGORY_COLUMN_MASTER in df.columns:
+        return CATEGORY_COLUMN_MASTER
+    if CATEGORY_COLUMN_MASTER_LEGACY in df.columns:
+        return CATEGORY_COLUMN_MASTER_LEGACY
+    df[CATEGORY_COLUMN_MASTER] = ""
+    return CATEGORY_COLUMN_MASTER
+
+
 def _mutate_categories_add_product(
     df: pd.DataFrame,
     ur2: str,
     ur3: str,
     ur4: str,
     category_pair: str,
-    slice1: str = "",
+    master_category: str = "",
     slice2: str = "",
 ) -> tuple[pd.DataFrame, bool, str | None]:
     """Возвращает (df, was_added, error). was_added=False при дубликате."""
@@ -325,8 +338,7 @@ def _mutate_categories_add_product(
             return df, False, f"В справочнике категорий нет столбца «{col}»."
     if "Товар ур.4" not in df.columns:
         df["Товар ур.4"] = ""
-    if "Разрез 1" not in df.columns:
-        df["Разрез 1"] = ""
+    master_col = _master_category_write_column(df)
     if "Разрез 2" not in df.columns:
         df["Разрез 2"] = ""
 
@@ -346,7 +358,7 @@ def _mutate_categories_add_product(
         "Товар ур.2": ur2,
         "Товар ур.3": ur3,
         "Товар ур.4": ur4,
-        "Разрез 1": str(slice1 or "").strip(),
+        master_col: str(master_category or "").strip(),
         "Разрез 2": str(slice2 or "").strip(),
     }
     if CATEGORY_COLUMN_GENERAL in df.columns:
@@ -484,6 +496,7 @@ def apply_reference_updates_batch(
                 entry.u3,
                 u4,
                 entry.category_pair,
+                entry.master_category,
             )
             if err:
                 if "уже есть" in err.lower():
@@ -766,7 +779,7 @@ def add_product_to_reference(
     ur3: str,
     ur4: str,
     category_pair: str,
-    slice1: str = "",
+    master_category: str = "",
     slice2: str = "",
 ) -> tuple[bool, str]:
     """Добавляет строку в categories (категория — «РНП/Общий РНП»), если тройки ещё нет."""
@@ -778,7 +791,7 @@ def add_product_to_reference(
         return False, err
 
     df, was_added, err = _mutate_categories_add_product(
-        df, ur2, ur3, ur4, category_pair, slice1, slice2
+        df, ur2, ur3, ur4, category_pair, master_category, slice2
     )
     if err:
         return False, err

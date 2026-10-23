@@ -281,6 +281,11 @@ def test_mutate_categories_add_product() -> None:
         out, "U2", "U3", "U4", "R/G"
     )
     _assert(not added2 and err2 is not None, "duplicate blocked")
+    out3, added3, err3 = _mutate_categories_add_product(
+        out, "U2", "U3", "U5", "R/G", "Жидкость мастер"
+    )
+    _assert(err3 is None and added3, "product with master category")
+    _assert(out3["Разрез 1"].iloc[-1] == "Жидкость мастер", "legacy column stores master category")
 
 
 def test_checks_no_bk_new_sellers() -> None:
@@ -1375,6 +1380,64 @@ def test_liquid_margin_without_excise_uses_sales() -> None:
     _assert(float(result["Маржа"].iloc[0]) == 200.0, "margin from sales without excise")
 
 
+def test_master_file_table() -> None:
+    from features.master_file import build_master_file_table
+
+    categories = pd.DataFrame(
+        {
+            "Категория товара РНП:": ["Жидкость 25 мл/Жидкость", "Табак/Табак"],
+            "Товар ур.2": ["Жидкости", "Табак"],
+            "Товар ур.3": ["25 мл", ""],
+            "Товар ур.4": ["SKU-L", "SKU-T"],
+            "Категория товара Мастер": ["Жидкость мастер", "Табак мастер"],
+        }
+    )
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["A", "A"],
+            "Товар ур.2": ["Жидкости", "Табак"],
+            "Товар ур.3": ["25 мл", ""],
+            "Товар ур.4": ["SKU-L", "SKU-T"],
+            "Неделя": [10, 10],
+            "Продажи с НДС": [180.0, 50.0],
+            "Маржа": [15.0, 20.0],
+            "Количество": [3, 1],
+        }
+    )
+    master = pd.DataFrame(
+        {
+            "Магазин": ["A", "A", "A", "A"],
+            "Товар ур.2": ["Жидкости", "Жидкости", "Табак", "Новое"],
+            "Товар ур.4": ["SKU-L", "SKU-L", "SKU-T", "SKU-X"],
+            "Месяц": [10, 10, 10, 10],
+            "Неделя": [10, 10, 10, 9],
+            "Продажи с НДС": [120.0, 60.0, 50.0, 5.0],
+            "Маржа": [10.0, 5.0, 20.0, 1.0],
+            "Количество": [2, 1, 1, 1],
+        }
+    )
+    cost = pd.DataFrame(
+        {"shop": ["A"], "sku": ["SKU-L"], "week": [10], "qty": [3], "buh_cost": [30.0]}
+    )
+    excise = pd.DataFrame({"sku": ["SKU-L"], "qty": [3.0], "excise_sum": [9.0]})
+    table = build_master_file_table(
+        master,
+        categories,
+        sales,
+        report_week=10,
+        lfl_week=9,
+        cost_df=cost,
+        excise_report=excise,
+    )
+    by_cat = {row["Категория"]: row for _, row in table.iterrows()}
+    _assert(set(by_cat) == {"Жидкость мастер", "Табак мастер"}, f"categories {set(by_cat)}")
+    _assert(float(by_cat["Жидкость мастер"]["Выручка"]) == 180.0, "liquid revenue")
+    _assert(float(by_cat["Жидкость мастер"]["Количество"]) == 3.0, "liquid qty")
+    _assert(float(by_cat["Жидкость мастер"]["Маржа"]) == 111.0, "liquid margin corrected")
+    _assert(float(by_cat["Табак мастер"]["Маржа"]) == 20.0, "non-liquid margin from file")
+    _assert(int(by_cat["Табак мастер"]["Неделя"]) == 10, "report week only")
+
+
 OFFLINE_TESTS = [
     test_column_letter,
     test_sheet_range_name,
@@ -1391,6 +1454,7 @@ OFFLINE_TESTS = [
     test_shop_economy_internet_and_boosters,
     test_mutate_shop_groups,
     test_mutate_categories_add_product,
+    test_master_file_table,
     test_checks_no_bk_new_sellers,
     test_checks_no_bk_pcts,
     test_consumables_nesting_values,

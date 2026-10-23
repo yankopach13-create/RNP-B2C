@@ -16,6 +16,7 @@ from data.references import (
 from features.categories import (
     category_pair_label,
     format_category_pair,
+    list_master_categories,
     parse_category_pair,
     unique_category_pairs,
 )
@@ -33,10 +34,11 @@ from features.reference_update import (
 )
 
 CREATE_NEW_CATEGORY_LABEL = "Создать новую категорию"
+CREATE_NEW_MASTER_LABEL = "Новая категория Мастер"
 
 # Магазины: подпись | группа. Товары: подпись | категория (+ блок ниже при «Создать новую»).
 _SHOP_ROW_COL_WIDTHS = [1.4, 2.4]
-_REF_ROW_COL_WIDTHS = [1.35, 2.1]
+_REF_ROW_COL_WIDTHS = [1.35, 1.7, 1.7]
 
 _POSITION_END = "— В конец списка —"
 _POSITION_START = "— В начало списка —"
@@ -113,11 +115,16 @@ def _render_shop_column_headers() -> None:
 
 
 def _render_product_column_headers() -> None:
-    h1, h2 = st.columns(_REF_ROW_COL_WIDTHS)
+    h1, h2, h3 = st.columns(_REF_ROW_COL_WIDTHS)
     with h1:
         st.markdown(f'<div style="{_ST["col_header"]}">&nbsp;</div>', unsafe_allow_html=True)
     with h2:
-        st.markdown(f'<div style="{_ST["col_header"]}">Категория</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="{_ST["col_header"]}">Категория РНП</div>', unsafe_allow_html=True)
+    with h3:
+        st.markdown(
+            f'<div style="{_ST["col_header"]}">Категория Мастер</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def _category_pair_options(categories_df) -> list[tuple[str, str]]:
@@ -275,6 +282,11 @@ def render_quick_reference_update(
     pair_options = _category_pair_options(categories_df)
     select_labels = [""] + [label for _, label in pair_options] + [CREATE_NEW_CATEGORY_LABEL]
     label_to_stored = {label: stored for stored, label in pair_options}
+    master_labels = (
+        [""]
+        + list_master_categories(categories_df)
+        + [CREATE_NEW_MASTER_LABEL]
+    )
 
     rnp_order = resolve_categories_rnp(category_order_rnp)
     general_order = resolve_categories_general(category_order_general)
@@ -314,7 +326,7 @@ def render_quick_reference_update(
             for j, (u2, u3, _u4s) in enumerate(unmatched_products):
                 label = f"{u2} \\ {u3}"
                 kp = f"{j}_{_key_part(u2)}_{_key_part(u3)}"
-                c1, c2 = st.columns(_REF_ROW_COL_WIDTHS)
+                c1, c2, c3 = st.columns(_REF_ROW_COL_WIDTHS)
                 with c1:
                     st.markdown(
                         f'<div style="{_ST["new_item_product"]}">{html.escape(label)}</div>',
@@ -322,15 +334,29 @@ def render_quick_reference_update(
                     )
                 with c2:
                     sel = st.selectbox(
-                        "Категория",
+                        "Категория РНП",
                         select_labels,
                         key=f"ref_pc_sel_{kp}",
                         label_visibility="collapsed",
                         format_func=_format_category_select_label,
                     )
+                with c3:
+                    st.selectbox(
+                        "Категория Мастер",
+                        master_labels,
+                        key=f"ref_pc_master_{kp}",
+                        label_visibility="collapsed",
+                    )
                 if sel == CREATE_NEW_CATEGORY_LABEL:
                     _render_new_category_fields(
                         kp, rnp_position_options, general_position_options
+                    )
+                if st.session_state.get(f"ref_pc_master_{kp}") == CREATE_NEW_MASTER_LABEL:
+                    st.text_input(
+                        "Новая категория Мастер",
+                        value="",
+                        key=f"ref_pc_master_new_{kp}",
+                        placeholder="Название для Мастер файла",
                     )
 
         if new_sellers:
@@ -390,6 +416,26 @@ def render_quick_reference_update(
                 )
                 continue
 
+            master_choice = str(
+                st.session_state.get(f"ref_pc_master_{kp}", "") or ""
+            ).strip()
+            if master_choice == CREATE_NEW_MASTER_LABEL:
+                master_category = str(
+                    st.session_state.get(f"ref_pc_master_new_{kp}", "") or ""
+                ).strip()
+                if not master_category:
+                    validation_messages.append(
+                        f"«{u2} \\ {u3}»: укажите название категории Мастер."
+                    )
+                    continue
+            elif master_choice:
+                master_category = master_choice
+            else:
+                validation_messages.append(
+                    f"«{u2} \\ {u3}»: выберите категорию Мастер."
+                )
+                continue
+
             new_category: QuickCategoryOrderEntry | None = None
             if is_new:
                 rnp, general = parse_category_pair(pair)
@@ -411,6 +457,7 @@ def render_quick_reference_update(
                     u4_variants=list(u4_variants),
                     category_pair=pair,
                     new_category=new_category,
+                    master_category=master_category,
                 )
             )
 

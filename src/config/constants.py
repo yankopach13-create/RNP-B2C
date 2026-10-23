@@ -38,6 +38,8 @@ SHOP_GROUP_COLUMN_GENERAL = "Группа Общий РНП:"
 # Справочник категорий (categories.xlsx)
 CATEGORY_COLUMN_RNP = "Категория товара РНП:"
 CATEGORY_COLUMN_GENERAL = "Категория товара Общий РНП:"
+CATEGORY_COLUMN_MASTER = "Категория товара Мастер"
+CATEGORY_COLUMN_MASTER_LEGACY = "Разрез 1"
 REQUIRED_CATEGORY_COLS = {
     CATEGORY_COLUMN_RNP,
     "Товар ур.2",
