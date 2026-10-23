@@ -45,6 +45,7 @@ class AppData:
     turnover_categories: Optional[list[str]]
     shops_order: Optional[list[str]]
     coal_weight: Optional[pd.DataFrame] = None
+    master_file: Optional[pd.DataFrame] = None
 
 _APP_DATA_OPTIONAL_FIELDS = (
     "focus_hookah",
@@ -57,6 +58,7 @@ _APP_DATA_OPTIONAL_FIELDS = (
     "excise_from_sales_skus",
     "turnover_categories",
     "coal_weight",
+    "master_file",
 )
 
 
@@ -94,6 +96,7 @@ def normalize_app_data(data: AppData | None) -> AppData | None:
             turnover_categories=getattr(data, "turnover_categories", None),
             shops_order=getattr(data, "shops_order", None),
             coal_weight=getattr(data, "coal_weight", None),
+            master_file=getattr(data, "master_file", None),
         )
 
     coerced_skus = coerce_excise_from_sales_skus(data.excise_from_sales_skus)
@@ -328,6 +331,37 @@ def _load_category_order() -> tuple[Optional[list[str]], Optional[list[str]]]:
     return _category_order_from_batch(batch)
 
 
+_MASTER_FILE_COLUMNS = (
+    "Магазин",
+    "Товар ур.2",
+    "Товар ур.4",
+    "Месяц",
+    "Неделя",
+    "Продажи с НДС",
+    "Маржа",
+    "Количество",
+)
+
+
+def _load_master_file(files) -> Optional[pd.DataFrame]:
+    """Читает выгрузку «Мастер файл»: продажи с месяцем, без товара ур.3."""
+    if not getattr(files, "master_file", None):
+        return None
+    df = _read_excel(files.master_file, label="Мастер файл")
+    df = df.copy()
+    df.columns = df.columns.astype(str).str.strip()
+    missing = [col for col in _MASTER_FILE_COLUMNS if col not in df.columns]
+    if missing:
+        raise ValueError(
+            "В файле «Мастер файл» нет столбцов: " + ", ".join(missing) + "."
+        )
+    _coerce_numeric_columns(
+        df,
+        ["Неделя", "Продажи с НДС", "Маржа", "Количество"],
+    )
+    return df
+
+
 def load_all_data(files) -> AppData:
     # Все файлы теперь опциональны
     sales_df = _read_excel(files.sales, label="Продажи") if files.sales else None
@@ -440,6 +474,8 @@ def load_all_data(files) -> AppData:
             ["количество чеков", "Количество чеков"],
         )
 
+    master_file_df = _load_master_file(files)
+
     consumables_nesting_df = (
         _read_excel(files.consumables_nesting, label="Вложенность расходников")
         if getattr(files, "consumables_nesting", None)
@@ -499,4 +535,5 @@ def load_all_data(files) -> AppData:
         turnover_categories=turnover_categories,
         shops_order=shops_order,
         coal_weight=coal_weight_df,
+        master_file=master_file_df,
     )

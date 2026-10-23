@@ -19,6 +19,7 @@ class UploadedFiles:
     focus_hookah: object = None
     consumables_nesting: object = None
     checks_no_bk: object = None
+    master_file: object = None
     run_analysis: bool = False
 
 
@@ -193,6 +194,15 @@ def render_upload_panel() -> UploadedFiles:
                     "Чек без БК — строка с пустым кодом клиента."
                 ),
             )
+            master_file = st.file_uploader(
+                "Мастер файл",
+                type=_XLSX_TYPES,
+                key="master_file_uploader",
+                help=(
+                    "Столбцы: Магазин, Товар ур.2, Товар ур.4, Месяц, Неделя, "
+                    "Продажи с НДС, Маржа, Количество."
+                ),
+            )
 
         _inject_upload_page_styles()
         st.markdown("")
@@ -216,6 +226,7 @@ def render_upload_panel() -> UploadedFiles:
             "focus_hookah": focus_hookah_file,
             "consumables_nesting": consumables_nesting_file,
             "checks_no_bk": checks_no_bk_file,
+            "master_file": master_file,
         }
         st.session_state["run_analysis"] = True
         container.empty()
@@ -231,6 +242,7 @@ def render_upload_panel() -> UploadedFiles:
             focus_hookah=focus_hookah_file,
             consumables_nesting=consumables_nesting_file,
             checks_no_bk=checks_no_bk_file,
+            master_file=master_file,
             run_analysis=True,
         )
 
@@ -248,6 +260,7 @@ def render_upload_panel() -> UploadedFiles:
             focus_hookah=u.get("focus_hookah"),
             consumables_nesting=u.get("consumables_nesting"),
             checks_no_bk=u.get("checks_no_bk"),
+            master_file=u.get("master_file"),
             run_analysis=True,
         )
 
@@ -276,6 +289,11 @@ def _inject_upload_page_styles() -> None:
             color: #ffffff !important;
             box-shadow: none !important;
             outline: none !important;
+        }
+        .st-key-master_file_uploader [data-testid="stWidgetLabel"],
+        .st-key-master_file_uploader [data-testid="stWidgetLabel"] p,
+        .st-key-master_file_uploader label {
+            color: #ffe14a !important;
         }
         </style>
         """,
