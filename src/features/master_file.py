@@ -30,7 +30,6 @@ COL_MONTH = "Месяц"
 COL_WEEK = "Неделя"
 COL_REVENUE = "Выручка"
 COL_MARGIN = "Маржа"
-COL_MARGIN_DELTA = "Изм. % маржи"
 COL_QTY = "Количество"
 COL_CATEGORY = "Категория"
 COL_U2 = "Товар ур.2"
@@ -45,7 +44,6 @@ TABLE_COLUMNS = [
     COL_WEEK,
     COL_REVENUE,
     COL_MARGIN,
-    COL_MARGIN_DELTA,
     COL_QTY,
     COL_CATEGORY,
 ]
@@ -57,10 +55,10 @@ DISPLAY_COLUMNS = [
     COL_WEEK,
     COL_REVENUE,
     COL_MARGIN,
-    COL_MARGIN_DELTA,
     COL_QTY,
     COL_CATEGORY,
 ]
+_LIQUID_ROW = "_liquid"
 
 
 def _month_label(value) -> str:
@@ -106,13 +104,10 @@ def _margin_pct(margin: float, revenue_vat: float) -> float | None:
     return float(margin) / (float(revenue_vat) / VAT_NET_DIVISOR) * 100
 
 
-def _fmt_margin_delta(value) -> str:
-    """Сдвиг процента маржи в процентных пунктах. Ноль не показываем."""
-    if value is None or pd.isna(value) or abs(float(value)) < 0.05:
-        return ""
-    number = float(value)
-    sign = "+" if number > 0 else "−"
-    return f"{sign}{abs(number):.1f} п.п.".replace(".", ",")
+def _fmt_pct(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{float(value):.1f}%".replace(".", ",")
 
 
 def sales_u3_by_product(sales_df: pd.DataFrame | None) -> dict[tuple[str, str], str]:
@@ -223,6 +218,7 @@ def _use_sales_liquid_margin(
     """Подставляет в мастер-файл уже пересчитанную маржу продаж по магазину и SKU."""
     grouped = grouped.copy()
     grouped[_MARGIN_FILE] = grouped[COL_MARGIN]
+    grouped[_LIQUID_ROW] = False
     if not margin_by_shop_sku:
         return grouped
     grouped["_shop"] = grouped[COL_SHOP].map(_shop_key)
@@ -231,6 +227,7 @@ def _use_sales_liquid_margin(
         mask = (grouped["_shop"] == shop) & (grouped["_sku"] == sku)
         if not mask.any():
             continue
+        grouped.loc[mask, _LIQUID_ROW] = True
         qty_sum = float(grouped.loc[mask, COL_QTY].sum())
         if qty_sum > 0:
             grouped.loc[mask, COL_MARGIN] = total * grouped.loc[mask, COL_QTY] / qty_sum
@@ -320,6 +317,7 @@ def build_master_file_table(
                 COL_MARGIN: "sum",
                 COL_QTY: "sum",
                 _MARGIN_FILE: "sum",
+                _LIQUID_ROW: "max",
             }
         )
         .rename(
@@ -330,18 +328,31 @@ def build_master_file_table(
             }
         )
     )
-    table[COL_MARGIN_DELTA] = [
-        None
-        if _margin_pct(new_margin, revenue) is None or _margin_pct(file_margin, revenue) is None
-        else _margin_pct(new_margin, revenue) - _margin_pct(file_margin, revenue)
-        for new_margin, file_margin, revenue in zip(
-            table[COL_MARGIN].tolist(),
-            table[_MARGIN_FILE].tolist(),
-            table[COL_REVENUE].tolist(),
-        )
+    comment = _liquid_category_comment(table)
+    table = _sort_table(table[TABLE_COLUMNS], shops_order)
+    table.attrs["liquid_margin_comment"] = comment
+    return table
+
+
+def _liquid_category_comment(table: pd.DataFrame) -> str:
+    """Исходный и скорректированный % маржи по категориям, куда вошла жидкость 25 мл."""
+    if _LIQUID_ROW not in table.columns or not table[_LIQUID_ROW].astype(bool).any():
+        return ""
+    names = [
+        str(name)
+        for name in table.loc[table[_LIQUID_ROW].astype(bool), COL_CATEGORY].tolist()
     ]
-    table = table[TABLE_COLUMNS]
-    return _sort_table(table, shops_order)
+    lines: list[str] = []
+    for name in list(dict.fromkeys(names)):
+        part = table.loc[table[COL_CATEGORY].astype(str) == name]
+        revenue = float(part[COL_REVENUE].sum())
+        file_pct = _margin_pct(float(part[_MARGIN_FILE].sum()), revenue)
+        new_pct = _margin_pct(float(part[COL_MARGIN].sum()), revenue)
+        lines.append(
+            f"Категория «{name}»: из мастер-файла {_fmt_pct(file_pct)}, "
+            f"после корректировки {_fmt_pct(new_pct)}."
+        )
+    return " ".join(lines)
 
 
 def _sort_table(table: pd.DataFrame, shops_order: list[str] | None) -> pd.DataFrame:
@@ -417,13 +428,12 @@ def render_master_file_block(
     visible[COL_PAD_RIGHT] = ""
     visible[COL_REVENUE] = visible[COL_REVENUE].map(_fmt_money)
     visible[COL_MARGIN] = visible[COL_MARGIN].map(_fmt_money)
-    visible[COL_MARGIN_DELTA] = visible[COL_MARGIN_DELTA].map(_fmt_margin_delta)
     visible[COL_QTY] = visible[COL_QTY].map(_fmt_qty)
     visible = visible[DISPLAY_COLUMNS]
-    st.caption(
-        f"Отчётная неделя {week}. Категория — «Категория товара Мастер». "
-        "«Изм. % маржи» — сдвиг после правки жидкости, в процентных пунктах."
-    )
+    st.caption(f"Отчётная неделя {week}. Категория — «Категория товара Мастер».")
+    comment = str(table.attrs.get("liquid_margin_comment") or "").strip()
+    if comment:
+        st.markdown(comment)
     st.dataframe(
         visible,
         use_container_width=True,
@@ -431,6 +441,5 @@ def render_master_file_block(
         column_config={
             COL_PAD_LEFT: st.column_config.TextColumn(COL_PAD_LEFT, width=28),
             COL_PAD_RIGHT: st.column_config.TextColumn(COL_PAD_RIGHT, width=28),
-            COL_MARGIN_DELTA: st.column_config.TextColumn(COL_MARGIN_DELTA, width=120),
         },
     )

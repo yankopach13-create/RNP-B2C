@@ -1449,11 +1449,10 @@ def test_master_file_table() -> None:
     _assert(float(by_cat["Жидкость мастер"]["Выручка"]) == 180.0, "liquid revenue")
     _assert(float(by_cat["Жидкость мастер"]["Количество"]) == 3.0, "liquid qty")
     _assert(float(by_cat["Жидкость мастер"]["Маржа"]) == 111.0, "liquid margin from sales")
-    _assert(
-        abs(float(by_cat["Жидкость мастер"]["Изм. % маржи"]) - 64.0) < 0.05,
-        "liquid margin percent shift",
-    )
-    _assert(abs(float(by_cat["Табак мастер"]["Изм. % маржи"])) < 0.05, "no shift for other categories")
+    note = str(table.attrs.get("liquid_margin_comment") or "")
+    _assert("Жидкость мастер" in note, f"liquid note {note}")
+    _assert("10,0%" in note and "74,0%" in note, f"percents {note}")
+    _assert("Изм. % маржи" not in table.columns, "delta column removed")
     _assert(float(by_cat["Табак мастер"]["Маржа"]) == 20.0, "non-liquid margin from file")
     _assert(int(by_cat["Табак мастер"]["Неделя"]) == 10, "report week only")
 
