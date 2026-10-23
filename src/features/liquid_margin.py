@@ -597,6 +597,10 @@ def parse_excise_retail_block(raw: pd.DataFrame) -> pd.DataFrame:
     return parsed
 
 
+def _excise_frame_usable(df: pd.DataFrame | None) -> bool:
+    return df is not None and not getattr(df, "empty", True)
+
+
 def _excise_for_week(
     week: int,
     *,
@@ -605,9 +609,16 @@ def _excise_for_week(
     excise_lfl: pd.DataFrame | None,
     excise_report: pd.DataFrame | None,
 ) -> pd.DataFrame | None:
-    if lfl_week is not None and week == int(lfl_week):
+    """Акциз для недели. Если LFL и отчётная — одно число, берётся акциз отчётной."""
+    lfl_matches = lfl_week is not None and week == int(lfl_week)
+    report_matches = report_week is not None and week == int(report_week)
+    if lfl_matches and report_matches:
+        if _excise_frame_usable(excise_report):
+            return excise_report
         return excise_lfl
-    if report_week is not None and week == int(report_week):
+    if lfl_matches:
+        return excise_lfl
+    if report_matches:
         return excise_report
     return None
 

@@ -1121,6 +1121,45 @@ def test_liquid_margin_recalculation() -> None:
     _assert(abs(new_margin - expected) < 0.02, "liquid margin recalculated")
 
 
+def test_liquid_margin_same_week_uses_report_excise() -> None:
+    """Одна неделя в продажах — и LFL, и отчётная. Акциз берётся из отчётного файла."""
+    from features.excise_liquid import CATEGORY_LIQUID_25ML
+    from features.liquid_margin import parse_liquid_cost, recalculate_liquid_margins
+
+    sales = pd.DataFrame(
+        {
+            "Магазин": ["Shop A"],
+            "Товар ур.4": ["SKU-1"],
+            "Неделя": [32],
+            "Категория": [CATEGORY_LIQUID_25ML],
+            "Количество": [120],
+            "Продажи с НДС": [24000.0],
+            "Маржа": [4800.0],
+        }
+    )
+    cost = parse_liquid_cost(
+        pd.DataFrame(
+            {
+                "Склад": ["Shop A"],
+                "Товар4": ["SKU-1"],
+                "Год-Неделя": ["2026/32"],
+                "Продажи (Q)": [120],
+                "Продажи (Σ)": [12000.0],
+            }
+        )
+    )
+    excise_report = pd.DataFrame({"sku": ["SKU-1"], "qty": [119.0], "excise_sum": [595.0]})
+    result = recalculate_liquid_margins(
+        sales,
+        cost,
+        None,
+        excise_report,
+        lfl_week=32,
+        report_week=32,
+    )
+    _assert(float(result["Маржа"].iloc[0]) != 4800.0, "margin corrected without lfl excise")
+
+
 def test_liquid_margin_fallback_qty() -> None:
     """120 продаж, 119 акциз — 1 шт по средней марже из продаж."""
     from features.excise_liquid import CATEGORY_LIQUID_25ML
@@ -1499,6 +1538,7 @@ OFFLINE_TESTS = [
     test_liquid_margin_ref_skips_recalculation,
     test_parse_liquid_cost_sum_column_aliases,
     test_liquid_margin_recalculation,
+    test_liquid_margin_same_week_uses_report_excise,
     test_liquid_margin_fallback_qty,
     test_liquid_margin_audit_export,
     test_liquid_margin_without_excise_uses_sales,
