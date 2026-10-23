@@ -194,17 +194,24 @@ def render_upload_panel() -> UploadedFiles:
                     "Чек без БК — строка с пустым кодом клиента."
                 ),
             )
+
+        _inject_upload_page_styles()
+        st.markdown(
+            "<h3 class='help-section-header__title master-file-upload-title'>Мастер файл</h3>",
+            unsafe_allow_html=True,
+        )
+        col_master, _col_master_spacer = st.columns([1.2, 4.8], gap="small")
+        with col_master:
             master_file = st.file_uploader(
                 "Мастер файл",
                 type=_XLSX_TYPES,
                 key="master_file_uploader",
+                label_visibility="collapsed",
                 help=(
                     "Столбцы: Магазин, Товар ур.2, Товар ур.4, Месяц, Неделя, "
                     "Продажи с НДС, Маржа, Количество."
                 ),
             )
-
-        _inject_upload_page_styles()
         st.markdown("")
         run_analysis = st.button(
             "Загрузить данные",
@@ -290,10 +297,9 @@ def _inject_upload_page_styles() -> None:
             box-shadow: none !important;
             outline: none !important;
         }
-        .st-key-master_file_uploader [data-testid="stWidgetLabel"],
-        .st-key-master_file_uploader [data-testid="stWidgetLabel"] p,
-        .st-key-master_file_uploader label {
+        .master-file-upload-title {
             color: #ffe14a !important;
+            margin: 0.85rem 0 0.35rem 0 !important;
         }
         </style>
         """,
