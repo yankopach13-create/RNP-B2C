@@ -206,6 +206,8 @@ def _render_rnp_b2c_header(
         st.session_state.show_general_rnp_b2c_block = False
     if "show_ai_rnp_b2c_block" not in st.session_state:
         st.session_state.show_ai_rnp_b2c_block = False
+    if "show_master_file_block" not in st.session_state:
+        st.session_state.show_master_file_block = False
 
     toggle_label = (
         "▼ РНП B2C (нажмите, чтобы свернуть)"
@@ -274,6 +276,27 @@ def _render_rnp_b2c_header(
     if st.session_state.show_ai_rnp_b2c_block:
         _fragment_ai_rnp_b2c()
 
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    master_toggle_label = (
+        "▼ Мастер файл (нажмите, чтобы свернуть)"
+        if st.session_state.show_master_file_block
+        else "▶ Мастер файл (нажмите, чтобы развернуть)"
+    )
+    col_master_toggle, col_master_spacer = st.columns([1.35, 1], gap="small")
+    with col_master_toggle:
+        if st.button(
+            master_toggle_label,
+            key="toggle_master_file_block_btn",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state.show_master_file_block = (
+                not st.session_state.show_master_file_block
+            )
+            st.rerun()
+    with col_master_spacer:
+        st.empty()
+
 
 def _inject_rnp_block_styles() -> None:
     st.markdown(
@@ -335,6 +358,28 @@ def _inject_rnp_block_styles() -> None:
         .st-key-toggle_ai_rnp_b2c_block_btn button:focus-visible {
             background-color: #955716 !important;
             border-color: #955716 !important;
+            color: #ffffff !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        .st-key-toggle_master_file_block_btn button {
+            background-color: #6e1f3a !important;
+            color: #ffffff !important;
+            border: 1px solid #6e1f3a !important;
+            font-weight: 800 !important;
+            font-size: 1.05rem !important;
+            border-radius: 10px !important;
+            min-height: 44px !important;
+            padding: 0.5rem 1rem !important;
+            justify-content: flex-start !important;
+            text-align: left !important;
+        }
+        .st-key-toggle_master_file_block_btn button:hover,
+        .st-key-toggle_master_file_block_btn button:active,
+        .st-key-toggle_master_file_block_btn button:focus,
+        .st-key-toggle_master_file_block_btn button:focus-visible {
+            background-color: #581830 !important;
+            border-color: #581830 !important;
             color: #ffffff !important;
             box-shadow: none !important;
             outline: none !important;
