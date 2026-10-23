@@ -219,30 +219,63 @@ def list_master_categories(category_df: pd.DataFrame | None) -> list[str]:
     return ordered
 
 
-def master_category_by_product(
-    category_df: pd.DataFrame | None,
-) -> dict[tuple[str, str], str]:
-    """Ключ (товар ур.2, товар ур.4) → «Категория товара Мастер».
+def _master_part(value) -> str:
+    """Ключ товара для категории Мастер: без лишних пробелов, без учёта регистра."""
+    return " ".join(_norm_cell(value).split()).casefold()
 
-    Мастер-файл не содержит ур.3, поэтому сопоставление идёт по ур.2 и ур.4.
-    При нескольких строках справочника с одним ключом остаётся первое непустое значение.
+
+def master_category_levels(
+    category_df: pd.DataFrame | None,
+) -> tuple[dict[tuple[str, str], str], dict[tuple[str, str], str], dict[str, str]]:
+    """Карты категории Мастер: (ур.2, ур.4), (ур.2, ур.3), только ур.2.
+
+    Уровень выбирается как в РНП: заполненный ур.4, иначе ур.3, иначе только ур.2.
+    Пустая ячейка категории на уровне не затирает более общее правило.
     """
+    map4: dict[tuple[str, str], str] = {}
+    map3: dict[tuple[str, str], str] = {}
+    map2: dict[str, str] = {}
     if category_df is None:
-        return {}
+        return map4, map3, map2
     frame = category_df.copy()
     frame.columns = frame.columns.astype(str).str.strip()
     column = master_category_column(frame)
     if column is None:
-        return {}
-    mapping: dict[tuple[str, str], str] = {}
+        return map4, map3, map2
     for _, row in frame.iterrows():
-        u2 = _norm_cell(row.get("Товар ур.2")).casefold()
-        u4 = _norm_cell(row.get("Товар ур.4")).casefold()
         label = _norm_cell(row.get(column))
-        if not u2 or not u4 or not label:
+        u2 = _master_part(row.get("Товар ур.2"))
+        if not label or not u2:
             continue
-        mapping.setdefault((u2, u4), label)
-    return mapping
+        u3 = _master_part(row.get("Товар ур.3"))
+        u4 = _master_part(row.get("Товар ур.4")) if "Товар ур.4" in frame.columns else ""
+        if u4:
+            map4.setdefault((u2, u4), label)
+        elif u3:
+            map3.setdefault((u2, u3), label)
+        else:
+            map2.setdefault(u2, label)
+    return map4, map3, map2
+
+
+def resolve_master_category(
+    u2,
+    u4,
+    u3,
+    levels: tuple[dict[tuple[str, str], str], dict[tuple[str, str], str], dict[str, str]],
+) -> str:
+    """Категория Мастер: ур.2+ур.4, затем ур.2+ур.3, затем только ур.2."""
+    map4, map3, map2 = levels
+    left = _master_part(u2)
+    right = _master_part(u4)
+    middle = _master_part(u3)
+    if left and right and (left, right) in map4:
+        return map4[(left, right)]
+    if left and middle and (left, middle) in map3:
+        return map3[(left, middle)]
+    if left and left in map2:
+        return map2[left]
+    return NO_MASTER_CATEGORY
 
 
 def reference_product_keys(category_df: pd.DataFrame) -> set[str]:

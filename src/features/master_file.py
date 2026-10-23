@@ -9,8 +9,10 @@ import streamlit as st
 
 from features.categories import (
     NO_MASTER_CATEGORY,
+    _master_part,
     apply_category_reference,
-    master_category_by_product,
+    master_category_levels,
+    resolve_master_category,
 )
 from features.data_prep import safe_int_week
 from features.excise_liquid import CATEGORY_LIQUID_25ML, WeekCalculationConfig
@@ -96,6 +98,28 @@ def liquid_product_keys(sales_df: pd.DataFrame | None) -> set[tuple[str, str]]:
         if left and right:
             keys.add((left, right))
     return keys
+
+
+def sales_u3_by_product(sales_df: pd.DataFrame | None) -> dict[tuple[str, str], str]:
+    """Товар ур.3 из продаж для пары ур.2 + ур.4. Мастер-файл этот уровень не содержит."""
+    if sales_df is None or sales_df.empty:
+        return {}
+    if COL_U2 not in sales_df.columns or COL_U4 not in sales_df.columns:
+        return {}
+    if "Товар ур.3" not in sales_df.columns:
+        return {}
+    found: dict[tuple[str, str], str] = {}
+    for u2, u3, u4 in zip(
+        sales_df[COL_U2].tolist(),
+        sales_df["Товар ур.3"].tolist(),
+        sales_df[COL_U4].tolist(),
+    ):
+        middle = _master_part(u3)
+        key = (_master_part(u2), _master_part(u4))
+        if not key[0] or not key[1] or not middle:
+            continue
+        found.setdefault(key, middle)
+    return found
 
 
 def _sales_with_rnp_category(
@@ -197,10 +221,17 @@ def build_master_file_table(
     if work.empty:
         return empty
 
-    category_map = master_category_by_product(categories_df)
+    levels = master_category_levels(categories_df)
+    sales_ready = _sales_with_rnp_category(sales_df, categories_df)
+    u3_by_product = sales_u3_by_product(sales_ready if sales_ready is not None else sales_df)
     work["_month"] = work[COL_MONTH].map(_month_label)
     work["_category"] = [
-        category_map.get((_norm_key(u2), _norm_key(u4)), NO_MASTER_CATEGORY)
+        resolve_master_category(
+            u2,
+            u4,
+            u3_by_product.get((_master_part(u2), _master_part(u4)), ""),
+            levels,
+        )
         for u2, u4 in zip(work[COL_U2].tolist(), work[COL_U4].tolist())
     ]
     work[COL_SALES_REVENUE] = pd.to_numeric(work[COL_SALES_REVENUE], errors="coerce").fillna(0.0)
@@ -219,7 +250,6 @@ def build_master_file_table(
     )
     grouped[COL_WEEK] = week
 
-    sales_ready = _sales_with_rnp_category(sales_df, categories_df)
     grouped = _apply_liquid_margins(
         grouped,
         liquid_product_keys(sales_ready),
