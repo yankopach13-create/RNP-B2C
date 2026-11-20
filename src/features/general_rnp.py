@@ -300,9 +300,6 @@ def build_general_rnp_table(
     client_row("Начислено бонусов", None, "credited")
     client_row("Списано бонусов", None, "spent")
     rows.append(["% от выручки", pct_rev_cum, pct_rev_week])
-    empty_row("Кол-во обработанных жалоб")
-    empty_row("Открыто магазинов невовремя")
-    empty_row("Кол-во нарушений")
 
     for label, source in _general_category_metric_rows(category_order_general):
         if is_coal_kg_category(label):
